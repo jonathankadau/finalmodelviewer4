@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARCHITECTURAL MASSING — DRAWING INSTRUMENT</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a0a; overflow: hidden; font-family: 'Courier New', monospace; color: #fff; }
+  #canvas-container { width: 100vw; height: 100vh; }
+  canvas { display: block; }
+  #scanlines { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px); pointer-events: none; z-index: 5; }
+
+  /* Loading */
+  #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; transition: opacity 0.8s ease; }
+  #loading-title { font-size: 10px; letter-spacing: 0.4em; text-transform: uppercase; opacity: 0.5; }
+  #loading-bar-wrap { width: 200px; height: 1px; background: rgba(255,255,255,0.1); }
+  #loading-bar { height: 1px; background: #fff; width: 0%; transition: width 0.3s ease; }
+  #loading-pct { font-size: 9px; letter-spacing: 0.3em; opacity: 0.3; }
+
+  /* HUD */
+  #hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+  .hud-corner { position: absolute; font-size: 9px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.6; line-height: 1.8; }
+  #hud-tl { top: 28px; left: 28px; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 12px; }
+  #hud-tr { top: 28px; right: 28px; text-align: right; border-right: 1px solid rgba(255,255,255,0.3); padding-right: 12px; }
+  #hud-br { bottom: 28px; right: 28px; text-align: right; border-right: 1px solid rgba(255,255,255,0.3); padding-right: 12px; }
+  .crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); opacity: 0.08; }
+  .crosshair::before, .crosshair::after { content: ''; position: absolute; background: #fff; }
+  .crosshair::before { width: 1px; height: 60px; top: -30px; left: 0; }
+  .crosshair::after { width: 60px; height: 1px; left: -30px; top: 0; }
+
+  /* Layer controls */
+  #controls { position: fixed; top: 50%; right: 28px; transform: translateY(-50%); z-index: 20; display: flex; flex-direction: column; gap: 2px; }
+  .layer-btn { display: flex; align-items: center; gap: 10px; background: none; border: none; cursor: pointer; padding: 6px 0; pointer-events: all; flex-direction: row-reverse; font-family: 'Courier New', monospace; }
+  .layer-btn:hover .layer-label { opacity: 1; }
+  .layer-label { font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: #fff; opacity: 0.35; transition: opacity 0.2s; white-space: nowrap; }
+  .layer-toggle { width: 28px; height: 2px; background: #fff; opacity: 0.25; transition: all 0.2s; flex-shrink: 0; }
+  .layer-btn.active .layer-toggle { opacity: 1; }
+  .layer-btn.active .layer-label { opacity: 0.8; }
+
+  /* View buttons */
+  #views { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; z-index: 20; }
+  .view-btn { background: none; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); font-family: 'Courier New', monospace; font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; padding: 5px 10px; cursor: pointer; transition: all 0.2s; pointer-events: all; }
+  .view-btn:hover, .view-btn.active { border-color: rgba(255,255,255,0.8); color: rgba(255,255,255,0.9); }
+
+  /* Clipping panel */
+  #clip-panel { position: fixed; left: 28px; top: 50%; transform: translateY(-50%); z-index: 20; display: flex; flex-direction: column; gap: 24px; }
+  .clip-group { display: flex; flex-direction: column; gap: 6px; }
+  .clip-title { font-size: 8px; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255,255,255,0.4); white-space: nowrap; border-left: 1px solid rgba(255,255,255,0.2); padding-left: 10px; }
+  .clip-title.active { color: rgba(255,255,255,0.9); border-left-color: rgba(255,255,255,0.7); }
+  .clip-slider-row { display: flex; align-items: center; gap: 8px; }
+  .clip-indicator { width: 1px; height: 120px; background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.15) 50%, transparent); position: relative; margin-right: 4px; }
+  .clip-indicator-pip { position: absolute; left: -3px; width: 7px; height: 1px; background: rgba(255,255,255,0.7); transition: top 0.05s linear; }
+  .clip-slider-wrap { width: 12px; height: 120px; display: flex; align-items: center; justify-content: center; position: relative; }
+  .clip-slider-wrap input[type=range] { width: 120px; transform: rotate(-90deg); transform-origin: center center; position: absolute; }
+  .clip-val { font-size: 7px; letter-spacing: 0.15em; color: rgba(255,255,255,0.22); width: 28px; text-align: right; }
+
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 1px; background: rgba(255,255,255,0.15); outline: none; cursor: pointer; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 8px; height: 8px; background: #fff; border-radius: 0; cursor: pointer; }
+  input[type=range]::-moz-range-thumb { width: 8px; height: 8px; background: #fff; border-radius: 0; border: none; cursor: pointer; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div id="loading-title">Loading Drawing Instrument</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+  <div id="loading-pct">000%</div>
+</div>
+
+<div id="scanlines"></div>
+<div id="canvas-container"></div>
+
+<div id="hud">
+  <div class="hud-corner" id="hud-tl">
+    ARCHITECTURAL MASSING<br>
+    DRAWING INSTRUMENT v.01<br>
+    <span id="cam-pos">—</span>
+  </div>
+  <div class="hud-corner" id="hud-tr">
+    JONATHAN KADAU / PELE CARNE<br>
+    B+W PROJECTION SYSTEM<br>
+    <span id="cam-angle">—</span>
+  </div>
+  <div class="hud-corner" id="hud-br">
+    <span id="fps-counter">—</span><br>
+    SECTIONS ACTIVE<br>
+    ALL LAYERS
+  </div>
+  <div class="crosshair"></div>
+</div>
+
+<div id="controls">
+  <button class="layer-btn active" data-layer="0"><span class="layer-toggle"></span><span class="layer-label">Release Spaces</span></button>
+  <button class="layer-btn active" data-layer="1"><span class="layer-toggle"></span><span class="layer-label">Compressed Spaces</span></button>
+  <button class="layer-btn active" data-layer="2"><span class="layer-toggle"></span><span class="layer-label">Infrastructure</span></button>
+  <button class="layer-btn active" data-layer="5"><span class="layer-toggle"></span><span class="layer-label">People</span></button>
+  <button class="layer-btn active" data-layer="3"><span class="layer-toggle"></span><span class="layer-label">Ground</span></button>
+</div>
+
+<div id="clip-panel">
+  <div class="clip-group">
+    <div class="clip-title" id="clip-title-z">FRONT ELEV — SECTION</div>
+    <div class="clip-slider-row">
+      <div class="clip-indicator"><div class="clip-indicator-pip" id="clip-pip-z"></div></div>
+      <div class="clip-slider-wrap"><input type="range" id="clip-z" min="0" max="100" value="100" step="0.5"></div>
+      <div class="clip-val" id="clip-val-z">—</div>
+    </div>
+  </div>
+  <div class="clip-group">
+    <div class="clip-title" id="clip-title-x">SIDE ELEV — SECTION</div>
+    <div class="clip-slider-row">
+      <div class="clip-indicator"><div class="clip-indicator-pip" id="clip-pip-x"></div></div>
+      <div class="clip-slider-wrap"><input type="range" id="clip-x" min="0" max="100" value="100" step="0.5"></div>
+      <div class="clip-val" id="clip-val-x">—</div>
+    </div>
+  </div>
+</div>
+
+<div id="views">
+  <button class="view-btn active" data-view="persp">PERSP</button>
+  <button class="view-btn" data-view="top">PLAN</button>
+  <button class="view-btn" data-view="front">FRONT</button>
+  <button class="view-btn" data-view="side">SIDE</button>
+  <button class="view-btn" data-view="iso">ISO</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+'use strict';
+
+// ── Renderer ──────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.localClippingEnabled = true;
+document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+// ── Scene / camera ────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0a);
+
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 1, 20000);
+camera.position.set(0, 500, 2000);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.rotateSpeed   = 0.6;
+controls.zoomSpeed     = 0.8;
+controls.minDistance   = 10;
+controls.maxDistance   = 15000;
+
+// ── Lighting ──────────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(8, 20, 12);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 0.1;
+sun.shadow.camera.far = 8000;
+sun.shadow.camera.left = -1500;
+sun.shadow.camera.right = 1500;
+sun.shadow.camera.top = 1500;
+sun.shadow.camera.bottom = -1500;
+sun.shadow.bias = -0.002;
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0xffffff, 0.2);
+rim.position.set(-1, -0.5, -1);
+scene.add(rim);
+
+// ── Clipping planes ───────────────────────────────────────────────────────────
+const clipZ = new THREE.Plane(new THREE.Vector3(0, 0, -1),  1e9);
+const clipX = new THREE.Plane(new THREE.Vector3(1, 0,  0),  1e9);
+const CLIPS = [clipZ, clipX];
+let modelBB = null;
+
+function updateClipZ(t) {
+  if (!modelBB) return;
+  const cut = modelBB.min.z + (modelBB.max.z - modelBB.min.z) * t;
+  clipZ.constant = cut;
+  document.getElementById('clip-val-z').textContent = cut.toFixed(0);
+  document.getElementById('clip-pip-z').style.top = ((1 - t) * 110) + 'px';
+  document.getElementById('clip-title-z').classList.toggle('active', t < 0.99);
+}
+function updateClipX(t) {
+  if (!modelBB) return;
+  const cut = modelBB.max.x - (modelBB.max.x - modelBB.min.x) * t;
+  clipX.constant = -cut;
+  document.getElementById('clip-val-x').textContent = cut.toFixed(0);
+  document.getElementById('clip-pip-x').style.top = ((1 - t) * 110) + 'px';
+  document.getElementById('clip-title-x').classList.toggle('active', t < 0.99);
+}
+document.getElementById('clip-z').addEventListener('input', e => updateClipZ(e.target.value / 100));
+document.getElementById('clip-x').addEventListener('input', e => updateClipX(e.target.value / 100));
+
+// ── Materials ─────────────────────────────────────────────────────────────────
+const mat_release = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff, transparent: true, opacity: 0.22,
+  roughness: 0.05, side: THREE.DoubleSide, depthWrite: false,
+  clippingPlanes: CLIPS,
+});
+const mat_compressed = new THREE.MeshStandardMaterial({
+  color: 0xdddddd, roughness: 0.85, metalness: 0.0,
+  side: THREE.DoubleSide,
+  clippingPlanes: CLIPS,
+});
+const mat_infra = new THREE.MeshStandardMaterial({
+  color: 0x1a1a1a, transparent: true, opacity: 0.75,
+  roughness: 0.6, metalness: 0.4,
+  side: THREE.DoubleSide,
+  clippingPlanes: CLIPS,
+});
+const mat_infra_wire = new THREE.MeshBasicMaterial({
+  color: 0x555555, wireframe: true,
+  transparent: true, opacity: 0.15,
+  clippingPlanes: CLIPS,
+});
+const mat_ground = new THREE.MeshBasicMaterial({
+  color: 0x666666, wireframe: true,
+  transparent: true, opacity: 0.3,
+  clippingPlanes: CLIPS,
+});
+const mat_floors = new THREE.MeshStandardMaterial({
+  color: 0x333333, roughness: 1.0, metalness: 0.0,
+  transparent: true, opacity: 0.0, // invisible — floors are just collision surfaces for people
+  side: THREE.DoubleSide,
+  clippingPlanes: CLIPS,
+});
+
+// ── Scene root ────────────────────────────────────────────────────────────────
+const sceneRoot = new THREE.Group();
+sceneRoot.rotation.y = THREE.MathUtils.degToRad(27.881);
+scene.add(sceneRoot);
+
+const layerGroups  = [];
+const layerVisible = [true, true, true, true, true, true];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Iterative material assignment — safe for any scene-graph depth
+function applyMat(root, mat, shadows, wire) {
+  const stack = [root];
+  while (stack.length) {
+    const n = stack.pop();
+    if (n.isMesh && !n.userData.isWire) {
+      n.material = mat;
+      n.frustumCulled = true;
+      if (shadows) { n.castShadow = true; n.receiveShadow = true; }
+      if (wire) {
+        const wm = new THREE.Mesh(n.geometry, wire);
+        wm.userData.isWire = true;
+        wm.frustumCulled = true;
+        n.add(wm);
+      }
+    }
+    for (let i = 0; i < n.children.length; i++) {
+      if (!n.children[i].userData.isWire) stack.push(n.children[i]);
+    }
+  }
+}
+
+// Iterative world-space bounding box — no recursion
+function safeBB(root) {
+  const bb = new THREE.Box3();
+  const stack = [root];
+  while (stack.length) {
+    const n = stack.pop();
+    if (n.isMesh && n.geometry) {
+      if (!n.geometry.boundingBox) n.geometry.computeBoundingBox();
+      const g = n.geometry.boundingBox;
+      if (g) {
+        n.updateWorldMatrix(true, false);
+        const m = n.matrixWorld;
+        [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]].forEach(([a,b,c]) =>
+          bb.expandByPoint(new THREE.Vector3(
+            a ? g.max.x : g.min.x,
+            b ? g.max.y : g.min.y,
+            c ? g.max.z : g.min.z
+          ).applyMatrix4(m))
+        );
+      }
+    }
+    for (let i = 0; i < n.children.length; i++) stack.push(n.children[i]);
+  }
+  return bb;
+}
+
+// ── Loading ───────────────────────────────────────────────────────────────────
+const glbFiles = [
+  { path: '1 - release spaces.glb',    mat: mat_release,    shadows: false, wire: null           },
+  { path: '2 - compressed spaces.glb', mat: mat_compressed, shadows: true,  wire: null           },
+  { path: '3 - infrastructure.glb',    mat: mat_infra,      shadows: false, wire: mat_infra_wire },
+  { path: '4 - ground.glb',            mat: mat_ground,     shadows: false, wire: null           },
+  { path: '5 - floors.glb',            mat: mat_floors,     shadows: false, wire: null,  isFloors: true },
+];
+
+let loadedCount  = 0;
+let allLoaded    = false;
+let cameraFramed = false;
+let storedCenter = new THREE.Vector3();
+let storedDist   = 1000;
+
+const loadBar = document.getElementById('loading-bar');
+const loadPct = document.getElementById('loading-pct');
+
+// Hard fallback — dismiss after 25 s no matter what
+const loadGuard = setTimeout(() => { if (!allLoaded) onAllLoaded(); }, 25000);
+
+function tick(success) {
+  loadedCount++;
+  const pct = Math.round((loadedCount / glbFiles.length) * 100);
+  loadBar.style.width = pct + '%';
+  loadPct.textContent = String(pct).padStart(3, '0') + '%';
+  if (loadedCount === glbFiles.length) onAllLoaded();
+}
+
+const loader = new THREE.GLTFLoader();
+
+glbFiles.forEach((file, idx) => {
+  const group = new THREE.Group();
+  layerGroups.push(group);
+  sceneRoot.add(group);
+
+  loader.load(
+    file.path,
+    (gltf) => {
+      // setTimeout gives a fresh JS call stack — prevents overflow inside Three's parser
+      setTimeout(() => {
+        try {
+          applyMat(gltf.scene, file.mat, file.shadows, file.wire);
+          group.add(gltf.scene);
+          // Frame on whichever model finishes first
+          if (!cameraFramed) {
+            cameraFramed = true;
+            const bb = safeBB(group);
+            if (!bb.isEmpty()) {
+              const c = new THREE.Vector3(), s = new THREE.Vector3();
+              bb.getCenter(c); bb.getSize(s);
+              const d = Math.max(s.x, s.y, s.z) * 1.8;
+              camera.near = d * 0.0005;
+              camera.far  = d * 50;
+              camera.updateProjectionMatrix();
+              controls.target.copy(c);
+              camera.position.set(c.x + d*0.7, c.y + d*0.5, c.z + d*0.8);
+              controls.minDistance = d * 0.01;
+              controls.maxDistance = d * 20;
+              controls.update();
+              storedCenter.copy(c);
+              storedDist = d;
+            }
+          }
+          console.log('✓', file.path);
+        } catch(e) {
+          console.error('Error processing', file.path, e);
+        }
+        tick();
+      }, 0);
+    },
+    undefined,
+    (err) => { console.error('✗', file.path, err); tick(); }
+  );
+});
+
+function onAllLoaded() {
+  if (allLoaded) return;
+  allLoaded = true;
+  clearTimeout(loadGuard);
+
+  // Build BB across all loaded groups for clipping plane mapping
+  const bb = new THREE.Box3();
+  layerGroups.forEach(g => { const b = safeBB(g); if (!b.isEmpty()) bb.union(b); });
+  modelBB = bb.isEmpty()
+    ? new THREE.Box3(new THREE.Vector3(-100,-100,-100), new THREE.Vector3(100,100,100))
+    : bb;
+
+  updateClipZ(1.0);
+  updateClipX(1.0);
+
+  const el = document.getElementById('loading');
+  el.style.opacity = '0';
+  setTimeout(() => el.style.display = 'none', 900);
+
+  maybeSpawnPeople();
+}
+
+// ── Layer toggles ─────────────────────────────────────────────────────────────
+document.querySelectorAll('.layer-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const i = +btn.dataset.layer;
+    layerVisible[i] = !layerVisible[i];
+    if (layerGroups[i]) layerGroups[i].visible = layerVisible[i];
+    btn.classList.toggle('active', layerVisible[i]);
+  });
+});
+
+// ── View presets ──────────────────────────────────────────────────────────────
+const viewPresets = {
+  persp: (c,d) => new THREE.Vector3(c.x+d*0.7, c.y+d*0.5, c.z+d*0.8),
+  top:   (c,d) => new THREE.Vector3(c.x,        c.y+d*1.5, c.z+0.01),
+  front: (c,d) => new THREE.Vector3(c.x,        c.y,       c.z+d*1.5),
+  side:  (c,d) => new THREE.Vector3(c.x+d*1.5,  c.y,       c.z),
+  iso:   (c,d) => new THREE.Vector3(c.x+d,      c.y+d,     c.z+d),
+};
+document.querySelectorAll('.view-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (!allLoaded) return;
+    const tp = viewPresets[btn.dataset.view](storedCenter, storedDist);
+    const sp = camera.position.clone(), st = controls.target.clone();
+    let t = 0;
+    (function step() {
+      const k = 1 - Math.pow(1 - (++t) / 60, 3);
+      camera.position.lerpVectors(sp, tp, k);
+      controls.target.lerpVectors(st, storedCenter, k);
+      controls.update();
+      if (t < 60) requestAnimationFrame(step);
+    })();
+  });
+});
+
+// ── Stars + graphic lines ────────────────────────────────────────────────────
+
+// Stars — 2000 tiny points scattered in a large sphere around the model
+const starCount = 2000;
+const starPositions = new Float32Array(starCount * 3);
+const starVelocities = new Float32Array(starCount * 3); // slow drift per star
+const starSpread = 6000;
+for (let i = 0; i < starCount; i++) {
+  // Random point in a sphere shell (avoid clustering at origin)
+  const r = starSpread * 0.4 + Math.random() * starSpread * 0.6;
+  const theta = Math.random() * Math.PI * 2;
+  const phi   = Math.acos(2 * Math.random() - 1);
+  starPositions[i*3+0] = r * Math.sin(phi) * Math.cos(theta);
+  starPositions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+  starPositions[i*3+2] = r * Math.cos(phi);
+  // Very slow random drift
+  starVelocities[i*3+0] = (Math.random() - 0.5) * 0.08;
+  starVelocities[i*3+1] = (Math.random() - 0.5) * 0.04;
+  starVelocities[i*3+2] = (Math.random() - 0.5) * 0.08;
+}
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+const starMat = new THREE.PointsMaterial({
+  color: 0xffffff, size: 2.5,
+  transparent: true, opacity: 0.55,
+  sizeAttenuation: true,
+});
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars); // added to scene directly, not sceneRoot — stars don't rotate with model
+
+
+// ── People ───────────────────────────────────────────────────────────────────
+// After floors GLB loads, we read each child mesh's bounding box,
+// then scatter people across the top face of each floor mesh.
+
+const people = [];
+const PEOPLE_PER_FLOOR = 2;
+const personMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+const personEdgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
+
+function spawnPeopleOnFloors(floorGroup, sceneSize) {
+  // Collect each individual floor mesh with its world-space BB
+  const floors = [];
+  const stack = [floorGroup];
+  while (stack.length) {
+    const n = stack.pop();
+    if (n.isMesh && n.geometry) {
+      n.updateWorldMatrix(true, false);
+      if (!n.geometry.boundingBox) n.geometry.computeBoundingBox();
+      const bb = n.geometry.boundingBox.clone().applyMatrix4(n.matrixWorld);
+      if (!bb.isEmpty()) floors.push(bb);
+    }
+    for (let i = 0; i < n.children.length; i++) stack.push(n.children[i]);
+  }
+
+  if (floors.length === 0) {
+    console.warn('No floor meshes found in 5 - floors.glb');
+    return;
+  }
+
+  console.log(`Spawning people on ${floors.length} floor(s)`);
+
+  const personHeight = sceneSize * 0.007;
+  const personWidth  = sceneSize * 0.003;
+  const personGeo  = new THREE.BoxGeometry(personWidth, personHeight, personWidth);
+  const personEdgeGeo = new THREE.EdgesGeometry(personGeo);
+
+  floors.forEach(bb => {
+    const floorY  = bb.max.y;
+    const centerX = (bb.min.x + bb.max.x) / 2;
+    const centerZ = (bb.min.z + bb.max.z) / 2;
+    const rangeX  = (bb.max.x - bb.min.x) * 0.8;
+    const rangeZ  = (bb.max.z - bb.min.z) * 0.8;
+
+    for (let i = 0; i < PEOPLE_PER_FLOOR; i++) {
+      const mesh = new THREE.Mesh(personGeo, personMat);
+      const edges = new THREE.LineSegments(personEdgeGeo, personEdgeMat);
+      mesh.add(edges); // edges follow the mesh automatically
+      const px = centerX + (Math.random() - 0.5) * rangeX;
+      const pz = centerZ + (Math.random() - 0.5) * rangeZ;
+      const py = floorY + personHeight * 0.5;
+      mesh.position.set(px, py, pz);
+      peopleGroup.add(mesh);
+
+      people.push({
+        mesh,
+        baseY:        py,
+        target:       new THREE.Vector3(px, py, pz),
+        speed:        sceneSize * 0.0003 + Math.random() * sceneSize * 0.0003,
+        bobFreq:      2.5 + Math.random() * 2.0,
+        bobAmp:       sceneSize * 0.002,
+        phase:        Math.random() * Math.PI * 2,
+        // Patrol bounds = this floor's XZ footprint (inset slightly)
+        minX: bb.min.x + rangeX * 0.1, maxX: bb.max.x - rangeX * 0.1,
+        minZ: bb.min.z + rangeZ * 0.1, maxZ: bb.max.z - rangeZ * 0.1,
+        centerX, centerZ,
+      });
+    }
+  });
+}
+
+function updatePeople() {
+  const now = performance.now() * 0.001;
+  for (const p of people) {
+    const dx = p.target.x - p.mesh.position.x;
+    const dz = p.target.z - p.mesh.position.z;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+
+    if (dist < p.speed * 2) {
+      // New random target clamped within this floor's footprint
+      p.target.set(
+        p.minX + Math.random() * (p.maxX - p.minX),
+        p.baseY,
+        p.minZ + Math.random() * (p.maxZ - p.minZ)
+      );
+    } else {
+      p.mesh.position.x += (dx / dist) * p.speed;
+      p.mesh.position.z += (dz / dist) * p.speed;
+    }
+
+    // Bob while moving
+    const moving = dist > p.speed;
+    p.mesh.position.y = p.baseY + (moving ? Math.abs(Math.sin(now * p.bobFreq + p.phase)) * p.bobAmp : 0);
+
+    // Face direction of travel
+    if (dist > p.speed * 0.5) p.mesh.rotation.y = Math.atan2(dx, dz);
+  }
+}
+
+// People group — registered as layer 5 so the toggle can show/hide it
+const peopleGroup = new THREE.Group();
+scene.add(peopleGroup);
+layerGroups[5] = peopleGroup;
+
+// Called from the loader when floors GLB finishes
+let peopleSpawned = false;
+function maybeSpawnPeople() {
+  if (peopleSpawned || !allLoaded) return;
+  peopleSpawned = true;
+  const floorsGroup = layerGroups[4];
+  if (floorsGroup) spawnPeopleOnFloors(floorsGroup, storedDist);
+}
+
+// ── HUD & render loop ─────────────────────────────────────────────────────────
+const camPosEl   = document.getElementById('cam-pos');
+const camAngleEl = document.getElementById('cam-angle');
+const fpsEl      = document.getElementById('fps-counter');
+let lastT = performance.now(), frames = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  updatePeople();
+
+  // Drift stars slowly
+  const pos = starGeo.attributes.position.array;
+  for (let i = 0; i < starCount; i++) {
+    pos[i*3+0] += starVelocities[i*3+0];
+    pos[i*3+1] += starVelocities[i*3+1];
+    pos[i*3+2] += starVelocities[i*3+2];
+    // Wrap: if a star drifts too far, nudge it back toward the spread shell
+    const dx = pos[i*3+0], dy = pos[i*3+1], dz = pos[i*3+2];
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    if (dist > starSpread) {
+      pos[i*3+0] *= 0.995;
+      pos[i*3+1] *= 0.995;
+      pos[i*3+2] *= 0.995;
+    }
+  }
+  starGeo.attributes.position.needsUpdate = true;
+
+  renderer.render(scene, camera);
+
+  frames++;
+  const now = performance.now();
+  if (now - lastT > 800) {
+    const fps = Math.round(frames / ((now - lastT) / 1000));
+    frames = 0; lastT = now;
+    const p = camera.position;
+    const d = new THREE.Vector3(); camera.getWorldDirection(d);
+    camPosEl.textContent   = `X${p.x.toFixed(0)} Y${p.y.toFixed(0)} Z${p.z.toFixed(0)}`;
+    camAngleEl.textContent = `AZ${(Math.atan2(d.x,d.z)*180/Math.PI).toFixed(0)}° EL${(Math.asin(d.y)*180/Math.PI).toFixed(0)}°`;
+    fpsEl.textContent      = `${fps} FPS`;
+  }
+}
+animate();
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

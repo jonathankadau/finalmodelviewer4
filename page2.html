@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>—</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #fff; }
+
+  #loading {
+    position: fixed; inset: 0; background: #000; z-index: 100;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+    transition: opacity 0.8s ease;
+  }
+  #loading-title { font-size: 9px; letter-spacing: 0.4em; text-transform: uppercase; opacity: 0.5; }
+  #loading-bar-wrap { width: 200px; height: 1px; background: rgba(255,255,255,0.1); }
+  #loading-bar { height: 1px; background: #fff; width: 0%; transition: width 0.3s ease; }
+
+  #next {
+    position: fixed; bottom: 32px; right: 36px; z-index: 100;
+    background: #fff; border: none; cursor: pointer;
+    font-family: 'Courier New', monospace; font-size: 11px;
+    letter-spacing: 0.35em; text-transform: uppercase;
+    color: #000; padding: 12px 20px; text-decoration: none; display: block;
+    transition: background 0.2s, color 0.2s;
+  }
+  #next:hover { background: #000; color: #fff; outline: 1px solid #fff; }
+
+  #hint {
+    position: fixed; bottom: 36px; left: 36px;
+    font-size: 8px; letter-spacing: 0.25em; text-transform: uppercase;
+    color: rgba(255,255,255,0.2); line-height: 2; pointer-events: none;
+  }
+
+  #crosshair {
+    position: fixed; top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    width: 10px; height: 10px; pointer-events: none; opacity: 0.25; display: none;
+  }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: #fff; }
+  #crosshair::before { width: 1px; height: 100%; left: 50%; top: 0; }
+  #crosshair::after  { height: 1px; width: 100%; top: 50%; left: 0; }
+  body.locked #crosshair { display: block; }
+  body.locked #hint .pointer-hint { display: none; }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div id="loading-title">Loading</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+</div>
+
+<a href="viewer.html" id="next">next →</a>
+<div id="crosshair"></div>
+<div id="hint">
+  <span class="pointer-hint">click to capture mouse<br></span>
+  wasd — move &nbsp;|&nbsp; mouse — look &nbsp;|&nbsp; space — jump<br>
+  esc — release
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+'use strict';
+
+// ── Renderer ──────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+document.body.appendChild(renderer.domElement);
+
+// ── Scene ─────────────────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+scene.fog = new THREE.FogExp2(0x000000, 0.000055);
+
+// ── Camera ────────────────────────────────────────────────────────────────────
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 1, 80000);
+camera.position.set(0, 200, 500);
+
+// ── Physics ───────────────────────────────────────────────────────────────────
+let groundY   = 0;
+let eyeHeight = 200;
+let velY      = 0;
+let onGround  = false;
+const GRAVITY = -2.4;
+const JUMP_V  = 12;
+
+// ── Point cloud helpers ───────────────────────────────────────────────────────
+// Densify: for each triangle in a geometry, scatter N random points on its surface
+function sampleMeshSurface(geometry, matrixWorld, targetCount) {
+  const pts = [];
+  const pos = geometry.attributes.position;
+  if (!pos) return pts;
+
+  // Build triangle list (handle indexed + non-indexed)
+  const triCount = geometry.index
+    ? geometry.index.count / 3
+    : pos.count / 3;
+
+  // Compute triangle areas for weighted sampling
+  const areas  = new Float32Array(triCount);
+  let totalArea = 0;
+  const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+  const cb  = new THREE.Vector3(), ab = new THREE.Vector3();
+
+  for (let t = 0; t < triCount; t++) {
+    let ia, ib, ic;
+    if (geometry.index) {
+      ia = geometry.index.getX(t * 3);
+      ib = geometry.index.getX(t * 3 + 1);
+      ic = geometry.index.getX(t * 3 + 2);
+    } else {
+      ia = t * 3; ib = t * 3 + 1; ic = t * 3 + 2;
+    }
+    vA.fromBufferAttribute(pos, ia);
+    vB.fromBufferAttribute(pos, ib);
+    vC.fromBufferAttribute(pos, ic);
+    cb.subVectors(vC, vB);
+    ab.subVectors(vA, vB);
+    cb.cross(ab);
+    const area = cb.length() * 0.5;
+    areas[t]    = area;
+    totalArea  += area;
+  }
+
+  if (totalArea === 0) return pts;
+
+  // Cumulative distribution for weighted picking
+  const cdf = new Float32Array(triCount);
+  cdf[0] = areas[0] / totalArea;
+  for (let t = 1; t < triCount; t++) cdf[t] = cdf[t-1] + areas[t] / totalArea;
+
+  const p = new THREE.Vector3();
+
+  for (let s = 0; s < targetCount; s++) {
+    // Pick triangle proportional to area
+    const r = Math.random();
+    let t = 0;
+    // binary search
+    let lo = 0, hi = triCount - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < r) lo = mid + 1; else hi = mid; }
+    t = lo;
+
+    let ia, ib, ic;
+    if (geometry.index) {
+      ia = geometry.index.getX(t * 3);
+      ib = geometry.index.getX(t * 3 + 1);
+      ic = geometry.index.getX(t * 3 + 2);
+    } else {
+      ia = t * 3; ib = t * 3 + 1; ic = t * 3 + 2;
+    }
+    vA.fromBufferAttribute(pos, ia);
+    vB.fromBufferAttribute(pos, ib);
+    vC.fromBufferAttribute(pos, ic);
+
+    // Barycentric random point on triangle
+    let u = Math.random(), v = Math.random();
+    if (u + v > 1) { u = 1 - u; v = 1 - v; }
+    p.set(
+      vA.x + u * (vB.x - vA.x) + v * (vC.x - vA.x),
+      vA.y + u * (vB.y - vA.y) + v * (vC.y - vA.y),
+      vA.z + u * (vB.z - vA.z) + v * (vC.z - vA.z)
+    ).applyMatrix4(matrixWorld);
+
+    pts.push(p.x, p.y, p.z);
+  }
+  return pts;
+}
+
+// ── Build model point cloud ───────────────────────────────────────────────────
+const MODEL_SCALE      = 60;       // big — towering
+const POINTS_PER_MESH  = 12000;    // dense per mesh surface
+
+let modelCloud       = null;
+let modelBase        = null;
+let modelSway        = null;
+
+let groundCloud      = null;
+let groundBase       = null;
+let groundSwayData   = null;
+
+function makeSway(count, ampMin, ampMax) {
+  const sw = new Float32Array(count * 9);
+  for (let i = 0; i < count; i++) {
+    const o = i * 9;
+    sw[o+0] = 0.12 + Math.random() * 0.20;
+    sw[o+1] = 0.08 + Math.random() * 0.14;
+    sw[o+2] = 0.11 + Math.random() * 0.18;
+    const amp = ampMin + Math.random() * (ampMax - ampMin);
+    sw[o+3] = amp;
+    sw[o+4] = amp * 0.4;
+    sw[o+5] = amp;
+    sw[o+6] = Math.random() * Math.PI * 2;
+    sw[o+7] = Math.random() * Math.PI * 2;
+    sw[o+8] = Math.random() * Math.PI * 2;
+  }
+  return sw;
+}
+
+function makePointCloud(verts, ptSize, opacity) {
+  const posArr = new Float32Array(verts);
+  const geo    = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  const mat = new THREE.PointsMaterial({
+    color: 0xffffff,
+    size: ptSize,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+  });
+  return new THREE.Points(geo, mat);
+}
+
+function applySway(cloud, base, sw, t) {
+  const pos = cloud.geometry.attributes.position.array;
+  const n   = pos.length / 3;
+  for (let i = 0; i < n; i++) {
+    const o = i * 9, b = i * 3;
+    pos[b+0] = base[b+0] + Math.sin(t * sw[o+0] + sw[o+6]) * sw[o+3];
+    pos[b+1] = base[b+1] + Math.sin(t * sw[o+1] + sw[o+7]) * sw[o+4];
+    pos[b+2] = base[b+2] + Math.sin(t * sw[o+2] + sw[o+8]) * sw[o+5];
+  }
+  cloud.geometry.attributes.position.needsUpdate = true;
+}
+
+function buildModelCloud(root) {
+  const verts = [];
+  const stack = [root];
+  while (stack.length) {
+    const n = stack.pop();
+    if (n.isMesh && n.geometry) {
+      n.updateWorldMatrix(true, false);
+      const pts = sampleMeshSurface(n.geometry, n.matrixWorld, POINTS_PER_MESH);
+      for (const v of pts) verts.push(v);
+    }
+    for (let i = 0; i < n.children.length; i++) stack.push(n.children[i]);
+  }
+
+  const count  = verts.length / 3;
+  modelBase    = new Float32Array(verts);
+  modelSway    = makeSway(count, 8, 24);
+  modelCloud   = makePointCloud(verts, 2.2, 0.88);
+  scene.add(modelCloud);
+}
+
+function buildGroundCloud(bb) {
+  // Scatter points across a large flat plane at groundY
+  const GROUND_POINTS = 60000;
+  const spread = 14000;
+  const verts  = [];
+  for (let i = 0; i < GROUND_POINTS; i++) {
+    const x = (Math.random() - 0.5) * spread;
+    const z = (Math.random() - 0.5) * spread;
+    // Slight vertical noise so it doesn't look perfectly flat
+    const y = bb.min.y + (Math.random() - 0.5) * 6;
+    verts.push(x + bb.center.x, y, z + bb.center.z);
+  }
+
+  const count     = verts.length / 3;
+  groundBase      = new Float32Array(verts);
+  // Very gentle sway on ground — almost imperceptible
+  groundSwayData  = makeSway(count, 1, 4);
+  groundCloud     = makePointCloud(verts, 1.4, 0.35);
+  scene.add(groundCloud);
+}
+
+// ── Load GLB ──────────────────────────────────────────────────────────────────
+const loader = new THREE.GLTFLoader();
+
+loader.load(
+  '1.1 - release spaces.glb',
+  (gltf) => {
+    const model = gltf.scene;
+    model.scale.setScalar(MODEL_SCALE);
+    model.updateMatrixWorld(true);
+    scene.add(model);
+
+    buildModelCloud(model);
+
+    model.traverse(n => { if (n.isMesh) n.visible = false; });
+
+    const bb = new THREE.Box3().setFromObject(model);
+    const center = new THREE.Vector3();
+    bb.getCenter(center);
+    const size = new THREE.Vector3();
+    bb.getSize(size);
+
+    // Snap model base to y=0 — shift point cloud verts down by bb.min.y
+    const yOffset = bb.min.y;
+    if (modelBase) {
+      for (let i = 1; i < modelBase.length; i += 3) modelBase[i] -= yOffset;
+      // also shift current positions
+      const pos = modelCloud.geometry.attributes.position.array;
+      for (let i = 1; i < pos.length; i += 3) pos[i] -= yOffset;
+      modelCloud.geometry.attributes.position.needsUpdate = true;
+    }
+
+    groundY   = 0;
+    eyeHeight = Math.max(size.y * 0.05, 60);
+
+    // Attach center to bb for ground builder
+    bb.center = center;
+    bb.min.y  = 0;
+    buildGroundCloud(bb);
+
+    camera.position.set(center.x, groundY + eyeHeight, bb.max.z + size.z * 0.15);
+    yaw = Math.PI;
+
+    const el = document.getElementById('loading');
+    el.style.opacity = '0';
+    setTimeout(() => el.style.display = 'none', 800);
+  },
+  (xhr) => {
+    if (xhr.lengthComputable)
+      document.getElementById('loading-bar').style.width =
+        ((xhr.loaded / xhr.total) * 100) + '%';
+  },
+  (err) => {
+    console.error(err);
+    document.getElementById('loading-title').textContent = 'load error — check file path';
+  }
+);
+
+// ── Input ─────────────────────────────────────────────────────────────────────
+const keys = {};
+let yaw    = 0;
+let pitch  = 0;
+let locked = false;
+
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))
+    e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+renderer.domElement.addEventListener('click', () =>
+  renderer.domElement.requestPointerLock()
+);
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === renderer.domElement;
+  document.body.classList.toggle('locked', locked);
+});
+document.addEventListener('mousemove', e => {
+  if (!locked) return;
+  yaw   -= e.movementX * 0.002;
+  pitch -= e.movementY * 0.002;
+  pitch  = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, pitch));
+});
+
+// ── Movement ──────────────────────────────────────────────────────────────────
+const SPEED       = 3;          // slow, deliberate — 50x slower than before
+const flatForward = new THREE.Vector3();
+const flatRight   = new THREE.Vector3();
+const worldUp     = new THREE.Vector3(0, 1, 0);
+
+function update(t) {
+  flatForward.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+  flatRight.crossVectors(worldUp, flatForward).normalize().negate();
+
+  if (keys['KeyW'] || keys['ArrowUp'])    camera.position.addScaledVector(flatForward,  SPEED);
+  if (keys['KeyS'] || keys['ArrowDown'])  camera.position.addScaledVector(flatForward, -SPEED);
+  if (keys['KeyA'] || keys['ArrowLeft'])  camera.position.addScaledVector(flatRight,   -SPEED);
+  if (keys['KeyD'] || keys['ArrowRight']) camera.position.addScaledVector(flatRight,    SPEED);
+
+  if (keys['Space'] && onGround) {
+    velY     = JUMP_V;
+    onGround = false;
+  }
+
+  velY += GRAVITY * 0.18;
+  camera.position.y += velY;
+
+  const floor = groundY + eyeHeight;
+  if (camera.position.y <= floor) {
+    camera.position.y = floor;
+    velY     = 0;
+    onGround = true;
+  }
+
+  camera.rotation.order = 'YXZ';
+  camera.rotation.y     = yaw;
+  camera.rotation.x     = pitch;
+
+  if (modelCloud)  applySway(modelCloud,  modelBase,       modelSway,      t);
+  if (groundCloud) applySway(groundCloud, groundBase,      groundSwayData, t * 0.4);
+}
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function animate(ts) {
+  requestAnimationFrame(animate);
+  update(ts * 0.001);
+  renderer.render(scene, camera);
+}
+requestAnimationFrame(animate);
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

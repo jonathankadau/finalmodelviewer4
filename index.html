@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>—</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; overflow: hidden; width: 100vw; height: 100vh; }
+  canvas { display: block; position: fixed; top: 0; left: 0; }
+  #game { z-index: 2; pointer-events: none; }
+  #bg   { z-index: 1; }
+
+  #next {
+    position: fixed;
+    bottom: 32px;
+    right: 36px;
+    z-index: 100;
+    background: #fff;
+    border: none;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: #000;
+    padding: 12px 20px;
+    text-decoration: none;
+    display: block;
+    transition: background 0.2s, color 0.2s;
+  }
+  #next:hover { background: #000; color: #fff; outline: 1px solid #fff; }
+</style>
+</head>
+<body>
+
+<canvas id="bg"></canvas>
+<canvas id="game"></canvas>
+<a href="page2.html" id="next">next →</a>
+
+<script>
+// ── Background pixel chaos ────────────────────────────────────────────────────
+const bg  = document.getElementById('bg');
+const bgc = bg.getContext('2d');
+
+let W, H, cols, rows;
+const PX = 4;
+
+const PALETTE = [
+  '#FF0000','#FF2200','#FF4400','#FF6600','#FF8800','#FFAA00',
+  '#FFCC00','#FFEE00','#EEFF00','#CCFF00','#AAFF00','#88FF00',
+  '#66FF00','#44FF00','#22FF00','#00FF00','#00FF22','#00FF44',
+  '#00FF66','#00FF88','#00FFAA','#00FFCC','#00FFEE','#00EEFF',
+  '#00CCFF','#00AAFF','#0088FF','#0066FF','#0044FF','#0022FF',
+  '#0000FF','#2200FF','#4400FF','#6600FF','#8800FF','#AA00FF',
+  '#CC00FF','#EE00FF','#FF00EE','#FF00CC','#FF00AA','#FF0088',
+  '#FF0066','#FF0044','#FF0022','#FF1493','#FF69B4','#FFD700',
+  '#00CED1','#DC143C','#7FFF00','#FF4500','#9400D3','#00FA9A',
+];
+
+let pixels = [];
+const startTime = Date.now();
+
+function resizeBg() {
+  W = bg.width  = window.innerWidth;
+  H = bg.height = window.innerHeight;
+  cols = Math.ceil(W / PX);
+  rows = Math.ceil(H / PX);
+  pixels = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      pixels.push({
+        c, r,
+        color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+        nextColor: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+        changeRate: 0.005 + Math.random() * 0.08,
+        t: Math.random(),
+      });
+}
+
+function drawBg() {
+  const elapsed = (Date.now() - startTime) / 1000;
+  const chaos = Math.min(1.0, elapsed / 6);
+  for (const p of pixels) {
+    p.t += p.changeRate * (0.3 + chaos * 3.5);
+    if (p.t >= 1) {
+      p.t = 0;
+      p.color = p.nextColor;
+      p.nextColor = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+    }
+    const flicker = Math.random() < (0.02 + chaos * 0.12);
+    bgc.fillStyle = flicker ? '#000' : p.color;
+    bgc.fillRect(p.c * PX, p.r * PX, PX, PX);
+  }
+}
+
+// ── Platformer ────────────────────────────────────────────────────────────────
+const gc  = document.getElementById('game');
+const ctx = gc.getContext('2d');
+
+// Pixel art scale — each "pixel" of the sprite = SPRITE_PX screen pixels
+const SPRITE_PX = 4;
+
+// Character — 8x8 sprite definition (row by row, 1=white 0=transparent)
+const SPRITE = [
+  [0,0,1,1,1,1,0,0],
+  [0,1,1,1,1,1,1,0],
+  [0,1,0,1,1,0,1,0],
+  [0,1,1,1,1,1,1,0],
+  [0,0,1,1,1,1,0,0],
+  [0,1,0,1,1,0,1,0],
+  [0,1,0,0,0,0,1,0],
+  [0,1,0,0,0,0,1,0],
+];
+const SW = SPRITE[0].length * SPRITE_PX; // sprite width in screen px
+const SH = SPRITE.length    * SPRITE_PX; // sprite height
+
+// Walk animation — shift legs every N frames
+const WALK_ANIM = [
+  [0,0,1,1,1,1,0,0],
+  [0,1,1,1,1,1,1,0],
+  [0,1,0,1,1,0,1,0],
+  [0,1,1,1,1,1,1,0],
+  [0,0,1,1,1,1,0,0],
+  [0,0,1,1,1,1,0,0],
+  [0,1,0,0,0,1,0,0],
+  [0,0,0,0,1,0,0,1],
+];
+
+let guy = {
+  x: 80, y: 0,   // position (top-left of sprite)
+  vx: 0, vy: 0,
+  onGround: false,
+  facing: 1,      // 1 = right, -1 = left
+  walkFrame: 0,
+  walkTick: 0,
+};
+
+// Platforms generated procedurally — random but always reachable
+// Index 0 is always the spawn platform at bottom centre
+let PLATFORM_DEFS = [];
+let platforms = [];
+
+const GRAVITY_G = 0.55;
+const JUMP_V    = -15;
+const WALK_SPD  = 3.5;
+const PLAT_H    = SPRITE_PX * 2;
+
+// Max horizontal/vertical distance reachable in one jump (in fractions of screen)
+// Tuned to JUMP_V, GRAVITY_G, WALK_SPD
+function generatePlatforms() {
+  // Jump arc: time to apex = JUMP_V / GRAVITY_G frames
+  // Max height = JUMP_V^2 / (2*GRAVITY_G) px — convert to fraction at call time
+  // Max horizontal reach = WALK_SPD * 2 * apex_time px
+
+  PLATFORM_DEFS = [];
+
+  // [0] Spawn — fixed bottom centre, wider so you always land
+  PLATFORM_DEFS.push({ xf: 0.50, yf: 0.90, wf: 0.13 });
+
+  // Build upward in bands — each band slightly higher than the last
+  // 3 platforms per band, ~5 bands above spawn
+  const BANDS = 5;
+  const BAND_HEIGHT = 0.13; // yf step between bands
+
+  // Constraints (in screen fractions, resolved later):
+  // Max jump height ~ (JUMP_V^2)/(2*GRAVITY_G) / screenH  ≈ 0.11 @ 600px screen
+  // Max horizontal reach ~ WALK_SPD * 2*(JUMP_V/GRAVITY_G) / screenW ≈ 0.23 @ 1200px
+
+  for (let band = 0; band < BANDS; band++) {
+    const yBase = 0.90 - (band + 1) * BAND_HEIGHT;
+    // 2–3 platforms per band, randomly offset within reach
+    const count = band === BANDS - 1 ? 1 : 2; // top band has 1
+
+    // Spread them across screen with jitter, ensure no two overlap
+    const slots = [];
+    for (let i = 0; i < count; i++) {
+      let xf, attempts = 0;
+      do {
+        // Distribute across screen width with randomness
+        const segment = (i + 0.5 + (Math.random() - 0.5) * 0.7) / count;
+        xf = Math.max(0.08, Math.min(0.92, segment));
+        attempts++;
+      } while (slots.some(s => Math.abs(s - xf) < 0.18) && attempts < 20);
+      slots.push(xf);
+
+      // Small y jitter within band so they're not perfectly aligned
+      const yf = yBase + (Math.random() - 0.5) * 0.05;
+      const wf = 0.07 + Math.random() * 0.05; // width 7–12% of screen
+      PLATFORM_DEFS.push({ xf, yf: Math.max(0.10, Math.min(0.92, yf)), wf });
+    }
+  }
+}
+
+// Spawn position — set after resizeGame resolves platform positions
+function getSpawnPos() {
+  const sp = platforms[0];
+  return { x: sp.x + sp.w / 2 - SW / 2, y: sp.y - SH };
+}
+
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space','ArrowLeft','ArrowRight','ArrowUp'].includes(e.code)) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+function resizeGame() {
+  gc.width  = window.innerWidth;
+  gc.height = window.innerHeight;
+  generatePlatforms();
+  platforms = PLATFORM_DEFS.map(d => {
+    const w = d.wf * gc.width;
+    return {
+      x: d.xf * gc.width - w / 2,  // xf is centre
+      y: d.yf * gc.height,
+      w,
+      h: PLAT_H,
+    };
+  });
+}
+
+function drawSprite(x, y, frame, facing) {
+  const sprite = frame === 1 ? WALK_ANIM : SPRITE;
+  ctx.save();
+  if (facing < 0) {
+    ctx.translate(x + SW, y);
+    ctx.scale(-1, 1);
+    for (let r = 0; r < sprite.length; r++)
+      for (let c = 0; c < sprite[r].length; c++)
+        if (sprite[r][c]) {
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(c * SPRITE_PX, r * SPRITE_PX, SPRITE_PX, SPRITE_PX);
+        }
+  } else {
+    for (let r = 0; r < sprite.length; r++)
+      for (let c = 0; c < sprite[r].length; c++)
+        if (sprite[r][c]) {
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(x + c * SPRITE_PX, y + r * SPRITE_PX, SPRITE_PX, SPRITE_PX);
+        }
+  }
+  ctx.restore();
+}
+
+function drawPlatform(p) {
+  // Chunky pixelated platform — white blocks
+  const BLK = SPRITE_PX;
+  const cols = Math.floor(p.w / BLK);
+  for (let i = 0; i < cols; i++) {
+    // top edge bright, bottom slightly dimmer
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(p.x + i * BLK, p.y, BLK, BLK);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(p.x + i * BLK, p.y + BLK, BLK, BLK);
+  }
+}
+
+function updateGuy() {
+  // Horizontal
+  let moving = false;
+  if (keys['KeyA'] || keys['ArrowLeft'])  { guy.vx = -WALK_SPD; guy.facing = -1; moving = true; }
+  else if (keys['KeyD'] || keys['ArrowRight']) { guy.vx =  WALK_SPD; guy.facing =  1; moving = true; }
+  else guy.vx *= 0.75;
+
+  // Jump
+  if ((keys['Space'] || keys['ArrowUp']) && guy.onGround) {
+    guy.vy = JUMP_V;
+    guy.onGround = false;
+  }
+
+  // Walk animation
+  if (moving && guy.onGround) {
+    guy.walkTick++;
+    if (guy.walkTick > 8) { guy.walkTick = 0; guy.walkFrame ^= 1; }
+  } else {
+    guy.walkFrame = 0;
+  }
+
+  // Gravity
+  guy.vy += GRAVITY_G;
+  guy.x  += guy.vx;
+  guy.y  += guy.vy;
+
+  // Screen wrap horizontally
+  if (guy.x + SW < 0)      guy.x = gc.width;
+  if (guy.x > gc.width)    guy.x = -SW;
+
+  // Platform collision (top only — stand on top)
+  guy.onGround = false;
+  for (const p of platforms) {
+    const prevBottom = guy.y + SH - guy.vy;
+    const currBottom = guy.y + SH;
+    const inX = guy.x + SW > p.x + 2 && guy.x < p.x + p.w - 2;
+    if (inX && prevBottom <= p.y + 1 && currBottom >= p.y) {
+      guy.y  = p.y - SH;
+      guy.vy = 0;
+      guy.onGround = true;
+    }
+  }
+
+  // Bottom = death — respawn on spawn platform
+  if (guy.y > gc.height + 40) {
+    const sp = getSpawnPos();
+    guy.x = sp.x; guy.y = sp.y;
+    guy.vx = 0;   guy.vy = 0;
+    guy.onGround = true;
+  }
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+function loop() {
+  // Background
+  drawBg();
+
+  // Game layer
+  ctx.clearRect(0, 0, gc.width, gc.height);
+  updateGuy();
+
+  for (const p of platforms) drawPlatform(p);
+  drawSprite(Math.round(guy.x), Math.round(guy.y), guy.walkFrame, guy.facing);
+
+  requestAnimationFrame(loop);
+}
+
+window.addEventListener('resize', () => { resizeBg(); resizeGame(); });
+resizeBg();
+resizeGame();
+
+// Start guy on spawn platform
+const sp0 = getSpawnPos();
+guy.x = sp0.x; guy.y = sp0.y;
+
+loop();
+</script>
+</body>
+</html>
