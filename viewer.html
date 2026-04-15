@@ -11,14 +11,12 @@
   canvas { display: block; }
   #scanlines { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px); pointer-events: none; z-index: 5; }
 
-  /* Loading */
   #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a0a0a; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; transition: opacity 0.8s ease; }
   #loading-title { font-size: 10px; letter-spacing: 0.4em; text-transform: uppercase; opacity: 0.5; }
   #loading-bar-wrap { width: 200px; height: 1px; background: rgba(255,255,255,0.1); }
   #loading-bar { height: 1px; background: #fff; width: 0%; transition: width 0.3s ease; }
   #loading-pct { font-size: 9px; letter-spacing: 0.3em; opacity: 0.3; }
 
-  /* HUD */
   #hud { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
   .hud-corner { position: absolute; font-size: 9px; letter-spacing: 0.25em; text-transform: uppercase; opacity: 0.6; line-height: 1.8; }
   #hud-tl { top: 28px; left: 28px; border-left: 1px solid rgba(255,255,255,0.3); padding-left: 12px; }
@@ -29,21 +27,101 @@
   .crosshair::before { width: 1px; height: 60px; top: -30px; left: 0; }
   .crosshair::after { width: 60px; height: 1px; left: -30px; top: 0; }
 
-  /* Layer controls */
-  #controls { position: fixed; top: 50%; right: 28px; transform: translateY(-50%); z-index: 20; display: flex; flex-direction: column; gap: 2px; }
-  .layer-btn { display: flex; align-items: center; gap: 10px; background: none; border: none; cursor: pointer; padding: 6px 0; pointer-events: all; flex-direction: row-reverse; font-family: 'Courier New', monospace; }
-  .layer-btn:hover .layer-label { opacity: 1; }
+  /* Annotation overlay */
+  #annotation-svg {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; z-index: 15;
+    opacity: 0; transition: opacity 0.5s ease;
+  }
+  #annotation-svg.active { opacity: 1; }
+  .anno-label {
+    font-family: 'Courier New', monospace; font-size: 9px;
+    letter-spacing: 0.28em; text-transform: uppercase;
+    fill: rgba(255,60,60,0.9);
+  }
+  .anno-line { stroke: rgba(220,40,40,0.75); stroke-width: 0.75; fill: none; stroke-dasharray: 3,4; }
+  .anno-dot { fill: rgba(220,40,40,0.85); }
+  .anno-tick { stroke: rgba(220,40,40,0.75); stroke-width: 0.75; fill: none; }
+
+  #detail-indicator {
+    position: fixed; top: 28px; left: 50%; transform: translateX(-50%);
+    font-size: 8px; letter-spacing: 0.35em; text-transform: uppercase;
+    color: rgba(180,210,200,0.0); border-bottom: 1px solid rgba(180,210,200,0.0);
+    padding-bottom: 4px; z-index: 20; pointer-events: none;
+    transition: color 0.6s ease, border-color 0.6s ease;
+  }
+  #detail-indicator.active { color: rgba(180,210,200,0.7); border-bottom-color: rgba(180,210,200,0.3); }
+
+  #controls {
+    position: fixed; top: 50%; right: 28px; transform: translateY(-50%);
+    z-index: 20; display: flex; flex-direction: column; gap: 0;
+    max-height: 90vh; overflow-y: auto; overflow-x: visible; scrollbar-width: none;
+  }
+  #controls::-webkit-scrollbar { display: none; }
+
+  #massing-layers, #detail-layers { display: flex; flex-direction: column; gap: 0; transition: opacity 0.5s ease; }
+  #detail-layers { opacity: 0; pointer-events: none; }
+  #detail-layers.active { opacity: 1; pointer-events: all; }
+  #massing-layers.ghosted { opacity: 0.3; }
+
+  .layers-section-label {
+    font-size: 7px; letter-spacing: 0.25em; text-transform: uppercase;
+    color: rgba(255,255,255,0.2); padding: 6px 0 4px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 2px; text-align: right;
+  }
+
+  .layer-row { display: flex; flex-direction: column; gap: 0; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+  .layer-row:last-child { border-bottom: none; }
+  .layer-top { display: flex; align-items: center; gap: 10px; flex-direction: row-reverse; cursor: pointer; }
+  .layer-top:hover .layer-label { opacity: 1; }
   .layer-label { font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: #fff; opacity: 0.35; transition: opacity 0.2s; white-space: nowrap; }
   .layer-toggle { width: 28px; height: 2px; background: #fff; opacity: 0.25; transition: all 0.2s; flex-shrink: 0; }
-  .layer-btn.active .layer-toggle { opacity: 1; }
-  .layer-btn.active .layer-label { opacity: 0.8; }
+  .layer-row.active .layer-toggle { opacity: 1; }
+  .layer-row.active .layer-label { opacity: 0.8; }
 
-  /* View buttons */
+  .explode-row { display: flex; align-items: center; gap: 6px; padding: 3px 0 1px 0; flex-direction: row-reverse; opacity: 0; transition: opacity 0.2s; pointer-events: none; }
+  .layer-row.active .explode-row { opacity: 1; pointer-events: all; }
+  .explode-label { font-size: 7px; letter-spacing: 0.15em; color: rgba(255,255,255,0.25); white-space: nowrap; text-transform: uppercase; }
+  .explode-val { font-size: 7px; letter-spacing: 0.1em; color: rgba(255,255,255,0.2); width: 22px; text-align: right; }
+  .explode-slider { width: 72px; -webkit-appearance: none; appearance: none; height: 1px; background: rgba(255,255,255,0.12); outline: none; cursor: pointer; }
+  .explode-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 6px; height: 6px; background: #fff; border-radius: 0; cursor: pointer; }
+  .explode-slider::-moz-range-thumb { width: 6px; height: 6px; background: #fff; border-radius: 0; border: none; cursor: pointer; }
+  .explode-slider.hot::-webkit-slider-thumb { box-shadow: 0 0 4px rgba(255,255,255,0.6); }
+
+  /* Detail explode row — visible when detail mode active */
+  #detail-explode-row {
+    display: flex; align-items: center; gap: 6px; padding: 5px 0 4px 0;
+    flex-direction: row-reverse; opacity: 0; pointer-events: none;
+    transition: opacity 0.3s ease; border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  #detail-explode-row.active { opacity: 1; pointer-events: all; }
+
   #views { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; z-index: 20; }
   .view-btn { background: none; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.5); font-family: 'Courier New', monospace; font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; padding: 5px 10px; cursor: pointer; transition: all 0.2s; pointer-events: all; }
   .view-btn:hover, .view-btn.active { border-color: rgba(255,255,255,0.8); color: rgba(255,255,255,0.9); }
 
-  /* Clipping panel */
+  #detail-toggle-btn {
+    background: none; border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.5);
+    font-family: 'Courier New', monospace; font-size: 8px; letter-spacing: 0.2em;
+    text-transform: uppercase; padding: 5px 10px; cursor: pointer; transition: all 0.25s; pointer-events: all;
+  }
+  #detail-toggle-btn:hover { border-color: rgba(255,255,255,0.5); color: rgba(255,255,255,0.7); }
+  #detail-toggle-btn.active { border-color: rgba(180,210,200,0.7); color: rgba(180,210,200,0.9); }
+
+  /* Isolate button — invisible until detail mode, then slides in */
+  #isolate-toggle-btn {
+    background: none; font-family: 'Courier New', monospace; font-size: 8px; letter-spacing: 0.2em;
+    text-transform: uppercase; cursor: pointer; transition: all 0.3s ease; pointer-events: none;
+    border: 1px solid rgba(255,255,255,0.0); color: rgba(255,255,255,0.0);
+    padding: 5px 0px; max-width: 0; overflow: hidden; white-space: nowrap;
+  }
+  #isolate-toggle-btn.visible {
+    border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.5);
+    pointer-events: all; max-width: 120px; padding: 5px 10px;
+  }
+  #isolate-toggle-btn.visible:hover { border-color: rgba(255,255,255,0.5); color: rgba(255,255,255,0.7); }
+  #isolate-toggle-btn.active { border-color: rgba(255,210,160,0.7) !important; color: rgba(255,210,160,0.9) !important; }
+
   #clip-panel { position: fixed; left: 28px; top: 50%; transform: translateY(-50%); z-index: 20; display: flex; flex-direction: column; gap: 24px; }
   .clip-group { display: flex; flex-direction: column; gap: 6px; }
   .clip-title { font-size: 8px; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(255,255,255,0.4); white-space: nowrap; border-left: 1px solid rgba(255,255,255,0.2); padding-left: 10px; }
@@ -58,6 +136,18 @@
   input[type=range] { -webkit-appearance: none; appearance: none; height: 1px; background: rgba(255,255,255,0.15); outline: none; cursor: pointer; }
   input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 8px; height: 8px; background: #fff; border-radius: 0; cursor: pointer; }
   input[type=range]::-moz-range-thumb { width: 8px; height: 8px; background: #fff; border-radius: 0; border: none; cursor: pointer; }
+
+  #scan-panel { position: fixed; left: 28px; bottom: 28px; z-index: 20; display: flex; flex-direction: column; gap: 5px; pointer-events: all; }
+  .scan-toggle-btn { background: none; border: 1px solid rgba(255,255,255,0.18); color: rgba(255,255,255,0.4); font-family: 'Courier New', monospace; font-size: 8px; letter-spacing: 0.25em; text-transform: uppercase; padding: 5px 10px; cursor: pointer; transition: all 0.25s; text-align: left; }
+  .scan-toggle-btn:hover { border-color: rgba(255,255,255,0.5); color: rgba(255,255,255,0.7); }
+  .scan-toggle-btn.active { border-color: rgba(180,210,200,0.7); color: rgba(180,210,200,0.9); }
+  .scan-title { font-size: 7px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.0); white-space: nowrap; border-left: 1px solid rgba(255,255,255,0.0); padding-left: 10px; transition: color 0.4s, border-color 0.4s; }
+  .scan-title.active { color: rgba(160,195,185,0.6); border-left-color: rgba(160,195,185,0.3); }
+  .scan-speed-row { display: flex; align-items: center; gap: 8px; padding-top: 2px; }
+  .scan-speed-label { font-size: 7px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(255,255,255,0.25); white-space: nowrap; }
+  #scan-speed-slider { width: 90px; -webkit-appearance: none; appearance: none; height: 1px; background: rgba(255,255,255,0.12); outline: none; cursor: pointer; }
+  #scan-speed-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 6px; height: 6px; background: rgba(180,210,200,0.8); border-radius: 0; cursor: pointer; }
+  #scan-speed-slider::-moz-range-thumb { width: 6px; height: 6px; background: rgba(180,210,200,0.8); border-radius: 0; border: none; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -70,6 +160,7 @@
 
 <div id="scanlines"></div>
 <div id="canvas-container"></div>
+<svg id="annotation-svg" xmlns="http://www.w3.org/2000/svg"></svg>
 
 <div id="hud">
   <div class="hud-corner" id="hud-tl">
@@ -90,12 +181,62 @@
   <div class="crosshair"></div>
 </div>
 
+<div id="detail-indicator">DETAIL MODE — MATERIAL SECTION</div>
+
 <div id="controls">
-  <button class="layer-btn active" data-layer="0"><span class="layer-toggle"></span><span class="layer-label">Release Spaces</span></button>
-  <button class="layer-btn active" data-layer="1"><span class="layer-toggle"></span><span class="layer-label">Compressed Spaces</span></button>
-  <button class="layer-btn active" data-layer="2"><span class="layer-toggle"></span><span class="layer-label">Infrastructure</span></button>
-  <button class="layer-btn active" data-layer="5"><span class="layer-toggle"></span><span class="layer-label">People</span></button>
-  <button class="layer-btn active" data-layer="3"><span class="layer-toggle"></span><span class="layer-label">Ground</span></button>
+  <div id="massing-layers">
+    <div class="layers-section-label">MASSING</div>
+    <div class="layer-row active" data-layer="0" data-explode-idx="-1">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Release Spaces</span></div>
+    </div>
+    <div class="layer-row active" data-layer="1" data-explode-idx="1">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Compressed Spaces</span></div>
+      <div class="explode-row">
+        <span class="explode-label">EXPLODE</span>
+        <input type="range" class="explode-slider" min="0" max="100" value="0" step="0.5">
+        <span class="explode-val">0</span>
+      </div>
+    </div>
+    <div class="layer-row active" data-layer="2" data-explode-idx="-1">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Infrastructure</span></div>
+    </div>
+    <div class="layer-row" data-layer="5" data-explode-idx="-1">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">People</span></div>
+    </div>
+    <div class="layer-row active" data-layer="3" data-explode-idx="-1">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Ground</span></div>
+    </div>
+    <div class="layer-row active" data-layer="6" data-explode-idx="-1">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Site Context</span></div>
+    </div>
+  </div>
+
+  <div id="detail-layers">
+    <div class="layers-section-label" style="margin-top:8px;">DETAIL</div>
+    <div id="detail-explode-row">
+      <span class="explode-label">EXPLODE</span>
+      <input type="range" id="detail-explode-slider" min="0" max="100" value="0" step="0.5">
+      <span class="explode-val" id="detail-explode-val">0</span>
+    </div>
+    <div class="layer-row active" data-detail-layer="0">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Skin</span></div>
+    </div>
+    <div class="layer-row active" data-detail-layer="1">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Walls</span></div>
+    </div>
+    <div class="layer-row active" data-detail-layer="2">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Steel</span></div>
+    </div>
+    <div class="layer-row active" data-detail-layer="3">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Mechanical</span></div>
+    </div>
+    <div class="layer-row active" data-detail-layer="4">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Tesselation</span></div>
+    </div>
+    <div class="layer-row active" data-detail-layer="5">
+      <div class="layer-top"><span class="layer-toggle"></span><span class="layer-label">Pannels</span></div>
+    </div>
+  </div>
 </div>
 
 <div id="clip-panel">
@@ -117,12 +258,23 @@
   </div>
 </div>
 
+<div id="scan-panel">
+  <button id="scan-toggle" class="scan-toggle-btn">X-RAY SCAN</button>
+  <div class="scan-title" id="scan-title">X AXIS — SCANNING</div>
+  <div class="scan-speed-row">
+    <span class="scan-speed-label">SPEED</span>
+    <input type="range" id="scan-speed-slider" min="1" max="100" value="20" step="1">
+  </div>
+</div>
+
 <div id="views">
   <button class="view-btn active" data-view="persp">PERSP</button>
   <button class="view-btn" data-view="top">PLAN</button>
   <button class="view-btn" data-view="front">FRONT</button>
   <button class="view-btn" data-view="side">SIDE</button>
   <button class="view-btn" data-view="iso">ISO</button>
+  <button id="detail-toggle-btn">DETAIL</button>
+  <button id="isolate-toggle-btn">ISOLATE</button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
@@ -146,39 +298,28 @@ document.getElementById('canvas-container').appendChild(renderer.domElement);
 // ── Scene / camera ────────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0a0a);
-
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 1, 20000);
 camera.position.set(0, 500, 2000);
-
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.rotateSpeed   = 0.6;
-controls.zoomSpeed     = 0.8;
-controls.minDistance   = 10;
-controls.maxDistance   = 15000;
+controls.enableDamping = true; controls.dampingFactor = 0.05;
+controls.rotateSpeed = 0.6; controls.zoomSpeed = 0.8;
+controls.minDistance = 10; controls.maxDistance = 15000;
 
 // ── Lighting ──────────────────────────────────────────────────────────────────
 scene.add(new THREE.AmbientLight(0xffffff, 0.18));
 const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-sun.position.set(8, 20, 12);
-sun.castShadow = true;
+sun.position.set(8, 20, 12); sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.near = 0.1;
-sun.shadow.camera.far = 8000;
-sun.shadow.camera.left = -1500;
-sun.shadow.camera.right = 1500;
-sun.shadow.camera.top = 1500;
-sun.shadow.camera.bottom = -1500;
-sun.shadow.bias = -0.002;
-scene.add(sun);
+sun.shadow.camera.near = 0.1; sun.shadow.camera.far = 8000;
+sun.shadow.camera.left = -1500; sun.shadow.camera.right = 1500;
+sun.shadow.camera.top = 1500; sun.shadow.camera.bottom = -1500;
+sun.shadow.bias = -0.002; scene.add(sun);
 const rim = new THREE.DirectionalLight(0xffffff, 0.2);
-rim.position.set(-1, -0.5, -1);
-scene.add(rim);
+rim.position.set(-1, -0.5, -1); scene.add(rim);
 
 // ── Clipping planes ───────────────────────────────────────────────────────────
-const clipZ = new THREE.Plane(new THREE.Vector3(0, 0, -1),  1e9);
-const clipX = new THREE.Plane(new THREE.Vector3(1, 0,  0),  1e9);
+const clipZ = new THREE.Plane(new THREE.Vector3(0,0,-1), 1e9);
+const clipX = new THREE.Plane(new THREE.Vector3(1,0, 0), 1e9);
 const CLIPS = [clipZ, clipX];
 let modelBB = null;
 
@@ -187,7 +328,7 @@ function updateClipZ(t) {
   const cut = modelBB.min.z + (modelBB.max.z - modelBB.min.z) * t;
   clipZ.constant = cut;
   document.getElementById('clip-val-z').textContent = cut.toFixed(0);
-  document.getElementById('clip-pip-z').style.top = ((1 - t) * 110) + 'px';
+  document.getElementById('clip-pip-z').style.top = ((1-t)*110)+'px';
   document.getElementById('clip-title-z').classList.toggle('active', t < 0.99);
 }
 function updateClipX(t) {
@@ -195,432 +336,738 @@ function updateClipX(t) {
   const cut = modelBB.max.x - (modelBB.max.x - modelBB.min.x) * t;
   clipX.constant = -cut;
   document.getElementById('clip-val-x').textContent = cut.toFixed(0);
-  document.getElementById('clip-pip-x').style.top = ((1 - t) * 110) + 'px';
+  document.getElementById('clip-pip-x').style.top = ((1-t)*110)+'px';
   document.getElementById('clip-title-x').classList.toggle('active', t < 0.99);
 }
-document.getElementById('clip-z').addEventListener('input', e => updateClipZ(e.target.value / 100));
-document.getElementById('clip-x').addEventListener('input', e => updateClipX(e.target.value / 100));
+document.getElementById('clip-z').addEventListener('input', e => updateClipZ(e.target.value/100));
+document.getElementById('clip-x').addEventListener('input', e => updateClipX(e.target.value/100));
 
 // ── Materials ─────────────────────────────────────────────────────────────────
 const mat_release = new THREE.MeshPhysicalMaterial({
-  color: 0xffffff, transparent: true, opacity: 0.22,
-  roughness: 0.05, side: THREE.DoubleSide, depthWrite: false,
-  clippingPlanes: CLIPS,
-});
+  color:0xffffff, transparent:true, opacity:0.22, roughness:0.05,
+  side:THREE.DoubleSide, depthWrite:false, clippingPlanes:CLIPS });
 const mat_compressed = new THREE.MeshStandardMaterial({
-  color: 0xdddddd, roughness: 0.85, metalness: 0.0,
-  side: THREE.DoubleSide,
-  clippingPlanes: CLIPS,
-});
+  color:0xdddddd, roughness:0.85, metalness:0.0, side:THREE.DoubleSide, clippingPlanes:CLIPS });
 const mat_infra = new THREE.MeshStandardMaterial({
-  color: 0x1a1a1a, transparent: true, opacity: 0.75,
-  roughness: 0.6, metalness: 0.4,
-  side: THREE.DoubleSide,
-  clippingPlanes: CLIPS,
-});
+  color:0x1a1a1a, transparent:true, opacity:0.75, roughness:0.6, metalness:0.4,
+  side:THREE.DoubleSide, clippingPlanes:CLIPS });
 const mat_infra_wire = new THREE.MeshBasicMaterial({
-  color: 0x555555, wireframe: true,
-  transparent: true, opacity: 0.15,
-  clippingPlanes: CLIPS,
-});
+  color:0x555555, wireframe:true, transparent:true, opacity:0.15, clippingPlanes:CLIPS });
 const mat_ground = new THREE.MeshBasicMaterial({
-  color: 0x666666, wireframe: true,
-  transparent: true, opacity: 0.3,
-  clippingPlanes: CLIPS,
-});
+  color:0x666666, wireframe:true, transparent:true, opacity:0.3, clippingPlanes:CLIPS });
 const mat_floors = new THREE.MeshStandardMaterial({
-  color: 0x333333, roughness: 1.0, metalness: 0.0,
-  transparent: true, opacity: 0.0, // invisible — floors are just collision surfaces for people
-  side: THREE.DoubleSide,
-  clippingPlanes: CLIPS,
-});
+  color:0x333333, roughness:1.0, metalness:0.0, transparent:true, opacity:0.0,
+  side:THREE.DoubleSide, clippingPlanes:CLIPS });
+const mat_site_points = new THREE.PointsMaterial({
+  color:0xffffff, size:0.3, transparent:true, opacity:0.18, sizeAttenuation:true, clippingPlanes:CLIPS });
+
+// Detail materials
+const mat_skin = new THREE.MeshPhysicalMaterial({
+  color:0xddeeff, transparent:true, opacity:0.18, roughness:0.05, metalness:0.1,
+  side:THREE.DoubleSide, depthWrite:false, clippingPlanes:CLIPS });
+const mat_walls = new THREE.MeshStandardMaterial({
+  color:0xcccccc, roughness:0.9, metalness:0.0, side:THREE.DoubleSide, clippingPlanes:CLIPS });
+const mat_steel = new THREE.MeshStandardMaterial({
+  color:0x222222, transparent:true, opacity:0.85, roughness:0.4, metalness:0.7,
+  side:THREE.DoubleSide, clippingPlanes:CLIPS });
+const mat_steel_wire = new THREE.MeshBasicMaterial({
+  color:0x888888, wireframe:true, transparent:true, opacity:0.2, clippingPlanes:CLIPS });
+const mat_mechanical = new THREE.MeshStandardMaterial({
+  color:0x888888, transparent:true, opacity:0.7, roughness:0.7, metalness:0.2,
+  side:THREE.DoubleSide, clippingPlanes:CLIPS });
+const mat_tesselation = new THREE.MeshBasicMaterial({
+  color:0xffffff, wireframe:true, transparent:true, opacity:0.5, clippingPlanes:CLIPS });
+const mat_pannels = new THREE.MeshStandardMaterial({
+  color:0x1a1a1a, transparent:true, opacity:0.75, roughness:0.6, metalness:0.4,
+  side:THREE.DoubleSide, clippingPlanes:CLIPS });
+const mat_pannels_wire = new THREE.MeshBasicMaterial({
+  color:0x555555, wireframe:true, transparent:true, opacity:0.15, clippingPlanes:CLIPS });
 
 // ── Scene root ────────────────────────────────────────────────────────────────
 const sceneRoot = new THREE.Group();
 sceneRoot.rotation.y = THREE.MathUtils.degToRad(27.881);
 scene.add(sceneRoot);
 
-const layerGroups  = [];
-const layerVisible = [true, true, true, true, true, true];
+const layerGroups   = [];
+const layerVisible  = [true,true,true,true,true,true,true];
+const detailGroups  = [];
+const detailVisible = [true,true,true,true,true,true];
+
+const massingOriginalMats    = new Map();
+const massingOriginalOpacity = new Map();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-// Iterative material assignment — safe for any scene-graph depth
 function applyMat(root, mat, shadows, wire) {
   const stack = [root];
   while (stack.length) {
     const n = stack.pop();
     if (n.isMesh && !n.userData.isWire) {
-      n.material = mat;
-      n.frustumCulled = true;
+      n.material = mat; n.frustumCulled = true;
       if (shadows) { n.castShadow = true; n.receiveShadow = true; }
-      if (wire) {
-        const wm = new THREE.Mesh(n.geometry, wire);
-        wm.userData.isWire = true;
-        wm.frustumCulled = true;
-        n.add(wm);
-      }
+      if (wire) { const wm = new THREE.Mesh(n.geometry, wire); wm.userData.isWire = true; wm.frustumCulled = true; n.add(wm); }
     }
-    for (let i = 0; i < n.children.length; i++) {
-      if (!n.children[i].userData.isWire) stack.push(n.children[i]);
-    }
+    for (let i = 0; i < n.children.length; i++) if (!n.children[i].userData.isWire) stack.push(n.children[i]);
   }
 }
 
-// Iterative world-space bounding box — no recursion
+function buildPointCloud(root, mat) {
+  const positions = [], DENSITY = 6, stack = [root];
+  while (stack.length) {
+    const n = stack.pop();
+    if (n.isMesh && n.geometry) {
+      n.updateWorldMatrix(true, false);
+      const geo = n.geometry, pos = geo.attributes.position;
+      if (pos) {
+        for (let i = 0; i < pos.count; i++) {
+          const v = new THREE.Vector3(pos.getX(i),pos.getY(i),pos.getZ(i)).applyMatrix4(n.matrixWorld);
+          positions.push(v.x,v.y,v.z);
+        }
+        const idx = geo.index, triCount = idx ? idx.count/3 : pos.count/3;
+        const vA=new THREE.Vector3(),vB=new THREE.Vector3(),vC=new THREE.Vector3();
+        for (let t=0;t<triCount;t++) {
+          const a=idx?idx.getX(t*3):t*3, b=idx?idx.getX(t*3+1):t*3+1, c=idx?idx.getX(t*3+2):t*3+2;
+          vA.set(pos.getX(a),pos.getY(a),pos.getZ(a)).applyMatrix4(n.matrixWorld);
+          vB.set(pos.getX(b),pos.getY(b),pos.getZ(b)).applyMatrix4(n.matrixWorld);
+          vC.set(pos.getX(c),pos.getY(c),pos.getZ(c)).applyMatrix4(n.matrixWorld);
+          for (let s=0;s<DENSITY;s++) {
+            let u=Math.random(),v2=Math.random();
+            if(u+v2>1){u=1-u;v2=1-v2;}
+            const w=1-u-v2;
+            positions.push(vA.x*u+vB.x*v2+vC.x*w, vA.y*u+vB.y*v2+vC.y*w, vA.z*u+vB.z*v2+vC.z*w);
+          }
+        }
+      }
+    }
+    for (let i=0;i<n.children.length;i++) stack.push(n.children[i]);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions,3));
+  const points = new THREE.Points(geo, mat);
+  points.matrixAutoUpdate = false; points.matrix.identity();
+  return points;
+}
+
 function safeBB(root) {
-  const bb = new THREE.Box3();
-  const stack = [root];
+  const bb = new THREE.Box3(), stack = [root];
   while (stack.length) {
     const n = stack.pop();
     if (n.isMesh && n.geometry) {
       if (!n.geometry.boundingBox) n.geometry.computeBoundingBox();
       const g = n.geometry.boundingBox;
       if (g) {
-        n.updateWorldMatrix(true, false);
-        const m = n.matrixWorld;
-        [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]].forEach(([a,b,c]) =>
-          bb.expandByPoint(new THREE.Vector3(
-            a ? g.max.x : g.min.x,
-            b ? g.max.y : g.min.y,
-            c ? g.max.z : g.min.z
-          ).applyMatrix4(m))
-        );
+        n.updateWorldMatrix(true,false);
+        [[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]].forEach(([a,b,c])=>
+          bb.expandByPoint(new THREE.Vector3(a?g.max.x:g.min.x,b?g.max.y:g.min.y,c?g.max.z:g.min.z).applyMatrix4(n.matrixWorld)));
       }
     }
-    for (let i = 0; i < n.children.length; i++) stack.push(n.children[i]);
+    for (let i=0;i<n.children.length;i++) stack.push(n.children[i]);
   }
   return bb;
 }
 
+function collectMeshes(root) {
+  const out=[], stack=[root];
+  while (stack.length) {
+    const n=stack.pop();
+    if (n.isMesh && !n.userData.isWire) out.push(n);
+    for (let i=0;i<n.children.length;i++) stack.push(n.children[i]);
+  }
+  return out;
+}
+
+function cacheMassingMaterials() {
+  for (let i=0;i<layerGroups.length;i++) {
+    if (i===5||i===6) continue;
+    for (const m of collectMeshes(layerGroups[i])) {
+      if (!massingOriginalMats.has(m)) massingOriginalMats.set(m, m.material);
+      const mat=m.material;
+      if (mat && !massingOriginalOpacity.has(mat.uuid))
+        massingOriginalOpacity.set(mat.uuid,{opacity:mat.opacity,transparent:mat.transparent});
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// EXPLODE SYSTEM
+// ════════════════════════════════════════════════════════════════════════════════
+class ExplodeSystem {
+  constructor() { this.pieces=[]; this.targetT=0; this.currentT=0; this.maxDist=1; this.ready=false; }
+  setTarget(t) { this.targetT=t; }
+  tick() {
+    if (!this.ready) return;
+    this.currentT += (this.targetT-this.currentT)*0.08;
+    if (Math.abs(this.currentT-this.targetT)<0.0001) this.currentT=this.targetT;
+    for (const p of this.pieces) p.mesh.position.copy(p.origin).addScaledVector(p.dir, this.currentT*this.maxDist);
+  }
+}
+
+function buildExplodeByMesh(layerGroup, sceneSize) {
+  const sys = new ExplodeSystem();
+  sys.maxDist = sceneSize * 0.8;
+  const meshes = collectMeshes(layerGroup);
+  if (!meshes.length) return sys;
+  const centroid=new THREE.Vector3(), tmp=new THREE.Box3(); let cnt=0;
+  for (const m of meshes) { m.updateWorldMatrix(true,false); tmp.setFromObject(m); if(!tmp.isEmpty()){const c=new THREE.Vector3();tmp.getCenter(c);centroid.add(c);cnt++;} }
+  if (cnt>0) centroid.divideScalar(cnt);
+  for (const mesh of meshes) {
+    mesh.updateWorldMatrix(true,false); tmp.setFromObject(mesh);
+    const mc=new THREE.Vector3(); tmp.getCenter(mc);
+    const dir=mc.clone().sub(centroid).normalize();
+    if(dir.lengthSq()<0.0001) dir.set(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize();
+    sys.pieces.push({mesh, origin:mesh.position.clone(), dir});
+  }
+  sys.ready=true; return sys;
+}
+
+// Detail explode — one piece per mesh across ALL 6 detail GLBs, single shared centroid
+function buildDetailExplode(detailGroupsArr, sceneSize) {
+  const sys = new ExplodeSystem();
+  sys.maxDist = sceneSize * 0.5;
+
+  // Gather every mesh across all detail groups
+  const allMeshes = [];
+  for (const grp of detailGroupsArr) { if (grp) for (const m of collectMeshes(grp)) allMeshes.push(m); }
+  if (!allMeshes.length) return sys;
+
+  // Single centroid across everything
+  const centroid=new THREE.Vector3(), tmp=new THREE.Box3(); let cnt=0;
+  for (const m of allMeshes) {
+    m.updateWorldMatrix(true,false); tmp.setFromObject(m);
+    if (!tmp.isEmpty()) { const c=new THREE.Vector3(); tmp.getCenter(c); centroid.add(c); cnt++; }
+  }
+  if (cnt>0) centroid.divideScalar(cnt);
+
+  for (const mesh of allMeshes) {
+    mesh.updateWorldMatrix(true,false); tmp.setFromObject(mesh);
+    const mc=new THREE.Vector3(); tmp.getCenter(mc);
+    const dir=mc.clone().sub(centroid).normalize();
+    if(dir.lengthSq()<0.0001) dir.set(Math.random()-.5,Math.random()-.5,Math.random()-.5).normalize();
+    // origin stored in mesh's local parent space
+    sys.pieces.push({mesh, origin:mesh.position.clone(), dir});
+  }
+  sys.ready=true; return sys;
+}
+
+const explodeSystems = [null,null,null,null];
+let detailExplodeSystem = null;
+
 // ── Loading ───────────────────────────────────────────────────────────────────
 const glbFiles = [
-  { path: '1 - release spaces.glb',    mat: mat_release,    shadows: false, wire: null           },
-  { path: '2 - compressed spaces.glb', mat: mat_compressed, shadows: true,  wire: null           },
-  { path: '3 - infrastructure.glb',    mat: mat_infra,      shadows: false, wire: mat_infra_wire },
-  { path: '4 - ground.glb',            mat: mat_ground,     shadows: false, wire: null           },
-  { path: '5 - floors.glb',            mat: mat_floors,     shadows: false, wire: null,  isFloors: true },
+  {path:'1 - release spaces.glb',    mat:mat_release,    shadows:false, wire:null},
+  {path:'2 - compressed spaces.glb', mat:mat_compressed, shadows:true,  wire:null},
+  {path:'3 - infrastructure.glb',    mat:mat_infra,      shadows:false, wire:mat_infra_wire},
+  {path:'4 - ground.glb',            mat:mat_ground,     shadows:false, wire:null},
+  {path:'5 - floors.glb',            mat:mat_floors,     shadows:false, wire:null, isFloors:true},
+  {path:'6 - site.glb',              mat:mat_site_points,shadows:false, wire:null, isPointCloud:true},
+];
+const detailGlbFiles = [
+  {path:'7 - skin.glb',         mat:mat_walls,       shadows:true,  wire:null},
+  {path:'8 - walls.glb',        mat:mat_skin,        shadows:false, wire:null},
+  {path:'9 - steel.glb',        mat:mat_steel,       shadows:false, wire:mat_steel_wire},
+  {path:'10 - mechanical.glb',  mat:mat_mechanical,  shadows:false, wire:null},
+  {path:'11 - tesselation.glb', mat:mat_tesselation, shadows:false, wire:null},
+  {path:'12 - pannels.glb',     mat:mat_pannels,     shadows:false, wire:mat_pannels_wire},
 ];
 
-let loadedCount  = 0;
-let allLoaded    = false;
-let cameraFramed = false;
-let storedCenter = new THREE.Vector3();
-let storedDist   = 1000;
+const TOTAL_FILES = glbFiles.length + detailGlbFiles.length;
+let loadedCount=0, allLoaded=false, cameraFramed=false;
+let storedCenter=new THREE.Vector3(), storedDist=1000;
+const loadBar=document.getElementById('loading-bar'), loadPct=document.getElementById('loading-pct');
+const loadGuard=setTimeout(()=>{ if(!allLoaded)onAllLoaded(); }, 35000);
 
-const loadBar = document.getElementById('loading-bar');
-const loadPct = document.getElementById('loading-pct');
-
-// Hard fallback — dismiss after 25 s no matter what
-const loadGuard = setTimeout(() => { if (!allLoaded) onAllLoaded(); }, 25000);
-
-function tick(success) {
+function tick() {
   loadedCount++;
-  const pct = Math.round((loadedCount / glbFiles.length) * 100);
-  loadBar.style.width = pct + '%';
-  loadPct.textContent = String(pct).padStart(3, '0') + '%';
-  if (loadedCount === glbFiles.length) onAllLoaded();
+  const pct=Math.round((loadedCount/TOTAL_FILES)*100);
+  loadBar.style.width=pct+'%'; loadPct.textContent=String(pct).padStart(3,'0')+'%';
+  if(loadedCount===TOTAL_FILES) onAllLoaded();
 }
 
 const loader = new THREE.GLTFLoader();
 
-glbFiles.forEach((file, idx) => {
-  const group = new THREE.Group();
-  layerGroups.push(group);
-  sceneRoot.add(group);
-
-  loader.load(
-    file.path,
-    (gltf) => {
-      // setTimeout gives a fresh JS call stack — prevents overflow inside Three's parser
-      setTimeout(() => {
-        try {
-          applyMat(gltf.scene, file.mat, file.shadows, file.wire);
-          group.add(gltf.scene);
-          // Frame on whichever model finishes first
+glbFiles.forEach((file,idx)=>{
+  const group=new THREE.Group(); layerGroups.push(group);
+  if (file.isPointCloud) { group.rotation.y=THREE.MathUtils.degToRad(27.881); scene.add(group); layerGroups[idx]=group; }
+  else sceneRoot.add(group);
+  loader.load(file.path, (gltf)=>{
+    setTimeout(()=>{
+      try {
+        if (file.isPointCloud) { gltf.scene.updateMatrixWorld(true); group.add(buildPointCloud(gltf.scene,file.mat)); }
+        else {
+          applyMat(gltf.scene,file.mat,file.shadows,file.wire); group.add(gltf.scene);
           if (!cameraFramed) {
-            cameraFramed = true;
-            const bb = safeBB(group);
+            cameraFramed=true;
+            const bb=safeBB(group);
             if (!bb.isEmpty()) {
-              const c = new THREE.Vector3(), s = new THREE.Vector3();
-              bb.getCenter(c); bb.getSize(s);
-              const d = Math.max(s.x, s.y, s.z) * 1.8;
-              camera.near = d * 0.0005;
-              camera.far  = d * 50;
-              camera.updateProjectionMatrix();
-              controls.target.copy(c);
-              camera.position.set(c.x + d*0.7, c.y + d*0.5, c.z + d*0.8);
-              controls.minDistance = d * 0.01;
-              controls.maxDistance = d * 20;
-              controls.update();
-              storedCenter.copy(c);
-              storedDist = d;
+              const c=new THREE.Vector3(),s=new THREE.Vector3(); bb.getCenter(c); bb.getSize(s);
+              const d=Math.max(s.x,s.y,s.z)*1.8;
+              camera.near=d*0.0005; camera.far=d*50; camera.updateProjectionMatrix();
+              controls.target.copy(c); camera.position.set(c.x+d*0.7,c.y+d*0.5,c.z+d*0.8);
+              controls.minDistance=d*0.01; controls.maxDistance=d*20; controls.update();
+              storedCenter.copy(c); storedDist=d;
             }
           }
-          console.log('✓', file.path);
-        } catch(e) {
-          console.error('Error processing', file.path, e);
         }
-        tick();
-      }, 0);
-    },
-    undefined,
-    (err) => { console.error('✗', file.path, err); tick(); }
-  );
+      } catch(e){console.error('Error',file.path,e);}
+      tick();
+    },0);
+  }, undefined, ()=>tick());
+});
+
+// Detail root — inside sceneRoot
+const detailRoot=new THREE.Group(); detailRoot.visible=false; sceneRoot.add(detailRoot);
+
+detailGlbFiles.forEach((file,idx)=>{
+  const group=new THREE.Group(); detailGroups.push(group); detailRoot.add(group);
+  loader.load(file.path,(gltf)=>{
+    setTimeout(()=>{
+      try { applyMat(gltf.scene,file.mat,file.shadows,file.wire); group.add(gltf.scene); }
+      catch(e){console.error('Error detail',file.path,e);}
+      tick();
+    },0);
+  }, undefined, ()=>tick());
 });
 
 function onAllLoaded() {
-  if (allLoaded) return;
-  allLoaded = true;
-  clearTimeout(loadGuard);
+  if (allLoaded) return; allLoaded=true; clearTimeout(loadGuard);
+  const bb=new THREE.Box3();
+  layerGroups.forEach((g,i)=>{ if(i===5)return; const b=safeBB(g); if(!b.isEmpty())bb.union(b); });
+  modelBB=bb.isEmpty()?new THREE.Box3(new THREE.Vector3(-100,-100,-100),new THREE.Vector3(100,100,100)):bb;
+  updateClipZ(1.0); updateClipX(1.0);
+  sceneRoot.updateMatrixWorld(true);
+  explodeSystems[1]=buildExplodeByMesh(layerGroups[1],storedDist);
 
-  // Build BB across all loaded groups for clipping plane mapping
-  const bb = new THREE.Box3();
-  layerGroups.forEach(g => { const b = safeBB(g); if (!b.isEmpty()) bb.union(b); });
-  modelBB = bb.isEmpty()
-    ? new THREE.Box3(new THREE.Vector3(-100,-100,-100), new THREE.Vector3(100,100,100))
-    : bb;
+  // Build detail explode after all geometry loaded and world matrices updated
+  detailRoot.updateMatrixWorld(true);
+  detailExplodeSystem=buildDetailExplode(detailGroups,storedDist);
 
-  updateClipZ(1.0);
-  updateClipX(1.0);
-
-  const el = document.getElementById('loading');
-  el.style.opacity = '0';
-  setTimeout(() => el.style.display = 'none', 900);
-
-  maybeSpawnPeople();
+  cacheMassingMaterials();
+  buildAnnotations();
+  document.getElementById('loading').style.opacity='0';
+  setTimeout(()=>document.getElementById('loading').style.display='none',900);
+  maybeSpawnPeople(); buildGroundPlane(); initScanSystem();
 }
 
-// ── Layer toggles ─────────────────────────────────────────────────────────────
-document.querySelectorAll('.layer-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const i = +btn.dataset.layer;
-    layerVisible[i] = !layerVisible[i];
-    if (layerGroups[i]) layerGroups[i].visible = layerVisible[i];
-    btn.classList.toggle('active', layerVisible[i]);
+// ════════════════════════════════════════════════════════════════════════════════
+// DETAIL MODE + ISOLATE
+// ════════════════════════════════════════════════════════════════════════════════
+let detailModeActive=false, isolateActive=false;
+const massingWasVisible=[];
+
+function enterDetailMode() {
+  detailModeActive=true;
+  cacheMassingMaterials();
+  // Fade massing to near-invisible — opacity only, no material swap
+  const seen=new Set();
+  massingOriginalMats.forEach((mat)=>{
+    if(seen.has(mat.uuid))return; seen.add(mat.uuid);
+    mat.transparent=true; mat.opacity=0.04;
+  });
+  for (let i=0;i<layerGroups.length;i++) {
+    if(!layerGroups[i])continue;
+    const stack=[layerGroups[i]];
+    while(stack.length){const n=stack.pop();if(n.userData.isWire&&n.material){n.material.transparent=true;n.material.opacity=0.02;}for(let c=0;c<n.children.length;c++)stack.push(n.children[c]);}
+  }
+  detailRoot.visible=true;
+  document.getElementById('detail-toggle-btn').classList.add('active');
+  document.getElementById('detail-indicator').classList.add('active');
+  document.getElementById('detail-layers').classList.add('active');
+  document.getElementById('massing-layers').classList.add('ghosted');
+  document.getElementById('detail-explode-row').classList.add('active');
+  document.getElementById('isolate-toggle-btn').classList.add('visible');
+}
+
+function exitDetailMode() {
+  if (isolateActive) exitIsolate();
+  detailModeActive=false;
+  // Restore massing opacity
+  const seen=new Set();
+  massingOriginalMats.forEach((mat)=>{
+    if(seen.has(mat.uuid))return; seen.add(mat.uuid);
+    const s=massingOriginalOpacity.get(mat.uuid);
+    if(s){mat.opacity=s.opacity;mat.transparent=s.transparent;}
+  });
+  for (let i=0;i<layerGroups.length;i++) {
+    if(!layerGroups[i])continue;
+    const stack=[layerGroups[i]];
+    while(stack.length){const n=stack.pop();if(n.userData.isWire&&n.material){const s=massingOriginalOpacity.get(n.material.uuid);if(s){n.material.opacity=s.opacity;n.material.transparent=s.transparent;}}for(let c=0;c<n.children.length;c++)stack.push(n.children[c]);}
+  }
+  // Reset explode
+  document.getElementById('detail-explode-slider').value=0;
+  document.getElementById('detail-explode-val').textContent='0';
+  if(detailExplodeSystem)detailExplodeSystem.setTarget(0);
+  detailRoot.visible=false;
+  document.getElementById('detail-toggle-btn').classList.remove('active');
+  document.getElementById('detail-indicator').classList.remove('active');
+  document.getElementById('detail-layers').classList.remove('active');
+  document.getElementById('massing-layers').classList.remove('ghosted');
+  document.getElementById('detail-explode-row').classList.remove('active');
+  document.getElementById('isolate-toggle-btn').classList.remove('visible');
+}
+
+function enterIsolate() {
+  isolateActive=true;
+  for (let i=0;i<layerGroups.length;i++) {
+    massingWasVisible[i]=layerGroups[i]?layerGroups[i].visible:false;
+    if(layerGroups[i])layerGroups[i].visible=false;
+  }
+  document.getElementById('isolate-toggle-btn').classList.add('active');
+  showAnnotations();
+}
+
+function exitIsolate() {
+  isolateActive=false;
+  for (let i=0;i<layerGroups.length;i++) {
+    if(layerGroups[i])layerGroups[i].visible=(massingWasVisible[i]!==undefined?massingWasVisible[i]:layerVisible[i]);
+  }
+  document.getElementById('isolate-toggle-btn').classList.remove('active');
+  hideAnnotations();
+}
+
+document.getElementById('detail-toggle-btn').addEventListener('click',()=>{ if(detailModeActive)exitDetailMode();else enterDetailMode(); });
+document.getElementById('isolate-toggle-btn').addEventListener('click',()=>{ if(isolateActive)exitIsolate();else enterIsolate(); });
+
+// Detail explode slider
+document.getElementById('detail-explode-slider').addEventListener('input',function(){
+  const v=parseFloat(this.value);
+  document.getElementById('detail-explode-val').textContent=Math.round(v);
+  if(detailExplodeSystem){detailExplodeSystem.setTarget(v/100);this.classList.toggle('hot',v>0);}
+});
+
+// Detail layer toggles
+document.querySelectorAll('[data-detail-layer]').forEach(row=>{
+  row.querySelector('.layer-top').addEventListener('click',()=>{
+    const i=+row.dataset.detailLayer; detailVisible[i]=!detailVisible[i];
+    if(detailGroups[i])detailGroups[i].visible=detailVisible[i];
+    row.classList.toggle('active',detailVisible[i]);
   });
 });
+
+// Massing layer toggles
+document.querySelectorAll('#massing-layers .layer-row').forEach(row=>{
+  row.querySelector('.layer-top').addEventListener('click',()=>{
+    const i=+row.dataset.layer; layerVisible[i]=!layerVisible[i];
+    if(layerGroups[i])layerGroups[i].visible=layerVisible[i];
+    row.classList.toggle('active',layerVisible[i]);
+  });
+});
+
+// Massing explode sliders
+document.querySelectorAll('.layer-row').forEach(row=>{
+  const slider=row.querySelector('.explode-slider'), valEl=row.querySelector('.explode-val'), eIdx=parseInt(row.dataset.explodeIdx);
+  if(!slider||eIdx<0)return;
+  slider.addEventListener('input',()=>{
+    const v=parseFloat(slider.value); if(valEl)valEl.textContent=Math.round(v);
+    if(explodeSystems[eIdx]){explodeSystems[eIdx].setTarget(v/100);slider.classList.toggle('hot',v>0);}
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// X-RAY SCAN SYSTEM
+// ════════════════════════════════════════════════════════════════════════════════
+const LAYER_PALETTES=[
+  {edge:[0.25,0.0,0.0],core:[1.0,0.06,0.06]},
+  {edge:[0.25,0.0,0.0],core:[1.0,0.06,0.06]},
+  {edge:[0.25,0.0,0.0],core:[1.0,0.06,0.06]},
+  {edge:[0.25,0.0,0.0],core:[1.0,0.06,0.06]},
+];
+const SCAN_LAYER_INDICES=[0,1,2,3];
+const scanUniforms={uScanX:{value:0.0},uHalfSlab:{value:1.0}};
+
+function makeScanMat(palette){
+  return new THREE.ShaderMaterial({
+    uniforms:{uScanX:scanUniforms.uScanX,uHalfSlab:scanUniforms.uHalfSlab,
+      uEdgeCol:{value:new THREE.Vector3(...palette.edge)},uCoreCol:{value:new THREE.Vector3(...palette.core)}},
+    transparent:true,depthWrite:false,side:THREE.DoubleSide,clipping:true,
+    vertexShader:`varying vec3 vWorldPos,vNormal;void main(){vec4 wp=modelMatrix*vec4(position,1.0);vWorldPos=wp.xyz;vNormal=normalize(mat3(modelMatrix)*normal);gl_Position=projectionMatrix*viewMatrix*wp;}`,
+    fragmentShader:`uniform float uScanX,uHalfSlab;uniform vec3 uEdgeCol,uCoreCol;varying vec3 vWorldPos,vNormal;
+    void main(){float dist=abs(vWorldPos.x-uScanX);float t=1.0-clamp(dist/uHalfSlab,0.0,1.0);if(t<0.01)discard;
+    vec3 col=mix(uEdgeCol,uCoreCol,smoothstep(0.4,1.0,t));float fill=t*0.13;
+    float leading=pow(smoothstep(0.0,0.05,t)*(1.0-smoothstep(0.05,0.22,t)),0.4);
+    float nDotX=abs(dot(normalize(vNormal),vec3(1.0,0.0,0.0)));
+    float lines=smoothstep(0.5,0.92,nDotX)*step(0.75,mod(gl_FragCoord.y/3.2,1.0))*t*0.7;
+    float alpha=clamp(fill+leading*0.92+lines,0.0,1.0);if(alpha<0.008)discard;
+    col+=uCoreCol*leading*0.45;gl_FragColor=vec4(col,alpha);}`,
+  });
+}
+
+const scanClipPos=new THREE.Plane(new THREE.Vector3(-1,0,0),0);
+const scanClipNeg=new THREE.Plane(new THREE.Vector3(1,0,0),0);
+const scanGroup=new THREE.Group(); scene.add(scanGroup);
+const scanLayerGroups=[];
+
+function buildScanMeshes(){
+  scanGroup.clear(); scanLayerGroups.length=0;
+  SCAN_LAYER_INDICES.forEach((layerIdx,i)=>{
+    const mat=makeScanMat(LAYER_PALETTES[i]); mat.clippingPlanes=[scanClipPos,scanClipNeg,...CLIPS];
+    const grp=layerGroups[layerIdx]; if(!grp){scanLayerGroups.push(null);return;}
+    const sg=new THREE.Group(); scanGroup.add(sg); scanLayerGroups.push(sg);
+    grp.updateMatrixWorld(true);
+    const stack=[grp];
+    while(stack.length){const n=stack.pop();if(n.isMesh&&!n.userData.isWire&&n.geometry){n.updateWorldMatrix(true,false);const cl=new THREE.Mesh(n.geometry,mat);cl.matrixAutoUpdate=false;cl.matrix.copy(n.matrixWorld);cl.frustumCulled=false;sg.add(cl);}for(let c=0;c<n.children.length;c++)stack.push(n.children[c]);}
+  });
+  scanUniforms.uHalfSlab.value=(modelBB?(modelBB.max.x-modelBB.min.x):storedDist)*0.015;
+}
+
+let scanActive=false,scanDir=1,scanT=0.0,SCAN_SPEED=0.004;
+document.getElementById('scan-speed-slider').addEventListener('input',function(){const v=this.value/100;SCAN_SPEED=0.0005+v*v*0.0245;});
+function setScanActive(on){scanActive=on;scanGroup.visible=on;document.getElementById('scan-toggle').classList.toggle('active',on);document.getElementById('scan-title').classList.toggle('active',on);}
+function updateScanX(){if(!modelBB)return;const wx=modelBB.min.x+(modelBB.max.x-modelBB.min.x)*scanT;scanUniforms.uScanX.value=wx;const hs=scanUniforms.uHalfSlab.value*1.2;scanClipPos.constant=wx+hs;scanClipNeg.constant=-(wx-hs);}
+function tickScan(){if(!scanActive||!modelBB)return;scanT+=SCAN_SPEED*scanDir;if(scanT>=1.0){scanT=1.0;scanDir=-1;}if(scanT<=0.0){scanT=0.0;scanDir=1;}updateScanX();}
+function initScanSystem(){buildScanMeshes();scanT=0.0;updateScanX();setScanActive(false);}
+document.getElementById('scan-toggle').addEventListener('click',()=>setScanActive(!scanActive));
 
 // ── View presets ──────────────────────────────────────────────────────────────
-const viewPresets = {
-  persp: (c,d) => new THREE.Vector3(c.x+d*0.7, c.y+d*0.5, c.z+d*0.8),
-  top:   (c,d) => new THREE.Vector3(c.x,        c.y+d*1.5, c.z+0.01),
-  front: (c,d) => new THREE.Vector3(c.x,        c.y,       c.z+d*1.5),
-  side:  (c,d) => new THREE.Vector3(c.x+d*1.5,  c.y,       c.z),
-  iso:   (c,d) => new THREE.Vector3(c.x+d,      c.y+d,     c.z+d),
+const viewPresets={
+  persp:(c,d)=>new THREE.Vector3(c.x+d*0.7,c.y+d*0.5,c.z+d*0.8),
+  top:  (c,d)=>new THREE.Vector3(c.x,c.y+d*1.5,c.z+0.01),
+  front:(c,d)=>new THREE.Vector3(c.x,c.y,c.z+d*1.5),
+  side: (c,d)=>new THREE.Vector3(c.x+d*1.5,c.y,c.z),
+  iso:  (c,d)=>new THREE.Vector3(c.x+d,c.y+d,c.z+d),
 };
-document.querySelectorAll('.view-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    if (!allLoaded) return;
-    const tp = viewPresets[btn.dataset.view](storedCenter, storedDist);
-    const sp = camera.position.clone(), st = controls.target.clone();
-    let t = 0;
-    (function step() {
-      const k = 1 - Math.pow(1 - (++t) / 60, 3);
-      camera.position.lerpVectors(sp, tp, k);
-      controls.target.lerpVectors(st, storedCenter, k);
-      controls.update();
-      if (t < 60) requestAnimationFrame(step);
-    })();
+document.querySelectorAll('.view-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.view-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active'); if(!allLoaded)return;
+    const tp=viewPresets[btn.dataset.view](storedCenter,storedDist);
+    const sp=camera.position.clone(),st=controls.target.clone(); let t=0;
+    (function step(){const k=1-Math.pow(1-(++t)/60,3);camera.position.lerpVectors(sp,tp,k);controls.target.lerpVectors(st,storedCenter,k);controls.update();if(t<60)requestAnimationFrame(step);})();
   });
 });
 
-// ── Stars + graphic lines ────────────────────────────────────────────────────
-
-// Stars — 2000 tiny points scattered in a large sphere around the model
-const starCount = 2000;
-const starPositions = new Float32Array(starCount * 3);
-const starVelocities = new Float32Array(starCount * 3); // slow drift per star
-const starSpread = 6000;
-for (let i = 0; i < starCount; i++) {
-  // Random point in a sphere shell (avoid clustering at origin)
-  const r = starSpread * 0.4 + Math.random() * starSpread * 0.6;
-  const theta = Math.random() * Math.PI * 2;
-  const phi   = Math.acos(2 * Math.random() - 1);
-  starPositions[i*3+0] = r * Math.sin(phi) * Math.cos(theta);
-  starPositions[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
-  starPositions[i*3+2] = r * Math.cos(phi);
-  // Very slow random drift
-  starVelocities[i*3+0] = (Math.random() - 0.5) * 0.08;
-  starVelocities[i*3+1] = (Math.random() - 0.5) * 0.04;
-  starVelocities[i*3+2] = (Math.random() - 0.5) * 0.08;
+// ── Ground point cloud ────────────────────────────────────────────────────────
+function buildGroundPlane(){
+  const groundY=modelBB?modelBB.min.y:0, spread=storedDist*18, count=180000;
+  const pos=new Float32Array(count*3);
+  for(let i=0;i<count;i++){const r=spread*Math.sqrt(Math.random()),theta=Math.random()*Math.PI*2;pos[i*3+0]=r*Math.cos(theta);pos[i*3+1]=groundY+(Math.random()-0.5)*0.5;pos[i*3+2]=r*Math.sin(theta);}
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  scene.add(new THREE.Points(geo,new THREE.ShaderMaterial({
+    transparent:true,depthWrite:false,clipping:true,clippingPlanes:CLIPS,
+    uniforms:{spread:{value:spread},color:{value:new THREE.Color(0xffffff)}},
+    vertexShader:`uniform float spread;varying float vFade;void main(){vec4 wp=modelMatrix*vec4(position,1.0);float dist=length(wp.xz);vFade=pow(clamp(1.0-dist/spread,0.0,1.0),0.4);gl_PointSize=0.8;gl_Position=projectionMatrix*viewMatrix*wp;}`,
+    fragmentShader:`uniform vec3 color;varying float vFade;void main(){float a=vFade*0.22;if(a<0.001)discard;gl_FragColor=vec4(color,a);}`,
+  })));
 }
-const starGeo = new THREE.BufferGeometry();
-starGeo.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
-const starMat = new THREE.PointsMaterial({
-  color: 0xffffff, size: 2.5,
-  transparent: true, opacity: 0.55,
-  sizeAttenuation: true,
-});
-const stars = new THREE.Points(starGeo, starMat);
-scene.add(stars); // added to scene directly, not sceneRoot — stars don't rotate with model
 
+// ── Stars ─────────────────────────────────────────────────────────────────────
+const starCount=2000, starPositions=new Float32Array(starCount*3), starVelocities=new Float32Array(starCount*3), starSpread=6000;
+for(let i=0;i<starCount;i++){const r=starSpread*0.4+Math.random()*starSpread*0.6,theta=Math.random()*Math.PI*2,phi=Math.acos(2*Math.random()-1);starPositions[i*3]=r*Math.sin(phi)*Math.cos(theta);starPositions[i*3+1]=r*Math.sin(phi)*Math.sin(theta);starPositions[i*3+2]=r*Math.cos(phi);starVelocities[i*3]=(Math.random()-.5)*.08;starVelocities[i*3+1]=(Math.random()-.5)*.04;starVelocities[i*3+2]=(Math.random()-.5)*.08;}
+const starGeo=new THREE.BufferGeometry();
+starGeo.setAttribute('position',new THREE.BufferAttribute(starPositions,3));
+scene.add(new THREE.Points(starGeo,new THREE.PointsMaterial({color:0xffffff,size:2.5,transparent:true,opacity:0.55,sizeAttenuation:true})));
 
-// ── People ───────────────────────────────────────────────────────────────────
-// After floors GLB loads, we read each child mesh's bounding box,
-// then scatter people across the top face of each floor mesh.
+// ── People ────────────────────────────────────────────────────────────────────
+const people=[], PEOPLE_PER_FLOOR=2;
+const personMat=new THREE.MeshBasicMaterial({color:0x000000}), personEdgeMat=new THREE.LineBasicMaterial({color:0xffffff});
 
-const people = [];
-const PEOPLE_PER_FLOOR = 2;
-const personMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-const personEdgeMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-
-function spawnPeopleOnFloors(floorGroup, sceneSize) {
-  // Collect each individual floor mesh with its world-space BB
-  const floors = [];
-  const stack = [floorGroup];
-  while (stack.length) {
-    const n = stack.pop();
-    if (n.isMesh && n.geometry) {
-      n.updateWorldMatrix(true, false);
-      if (!n.geometry.boundingBox) n.geometry.computeBoundingBox();
-      const bb = n.geometry.boundingBox.clone().applyMatrix4(n.matrixWorld);
-      if (!bb.isEmpty()) floors.push(bb);
-    }
-    for (let i = 0; i < n.children.length; i++) stack.push(n.children[i]);
-  }
-
-  if (floors.length === 0) {
-    console.warn('No floor meshes found in 5 - floors.glb');
-    return;
-  }
-
-  console.log(`Spawning people on ${floors.length} floor(s)`);
-
-  const personHeight = sceneSize * 0.007;
-  const personWidth  = sceneSize * 0.003;
-  const personGeo  = new THREE.BoxGeometry(personWidth, personHeight, personWidth);
-  const personEdgeGeo = new THREE.EdgesGeometry(personGeo);
-
-  floors.forEach(bb => {
-    const floorY  = bb.max.y;
-    const centerX = (bb.min.x + bb.max.x) / 2;
-    const centerZ = (bb.min.z + bb.max.z) / 2;
-    const rangeX  = (bb.max.x - bb.min.x) * 0.8;
-    const rangeZ  = (bb.max.z - bb.min.z) * 0.8;
-
-    for (let i = 0; i < PEOPLE_PER_FLOOR; i++) {
-      const mesh = new THREE.Mesh(personGeo, personMat);
-      const edges = new THREE.LineSegments(personEdgeGeo, personEdgeMat);
-      mesh.add(edges); // edges follow the mesh automatically
-      const px = centerX + (Math.random() - 0.5) * rangeX;
-      const pz = centerZ + (Math.random() - 0.5) * rangeZ;
-      const py = floorY + personHeight * 0.5;
-      mesh.position.set(px, py, pz);
-      peopleGroup.add(mesh);
-
-      people.push({
-        mesh,
-        baseY:        py,
-        target:       new THREE.Vector3(px, py, pz),
-        speed:        sceneSize * 0.0003 + Math.random() * sceneSize * 0.0003,
-        bobFreq:      2.5 + Math.random() * 2.0,
-        bobAmp:       sceneSize * 0.002,
-        phase:        Math.random() * Math.PI * 2,
-        // Patrol bounds = this floor's XZ footprint (inset slightly)
-        minX: bb.min.x + rangeX * 0.1, maxX: bb.max.x - rangeX * 0.1,
-        minZ: bb.min.z + rangeZ * 0.1, maxZ: bb.max.z - rangeZ * 0.1,
-        centerX, centerZ,
-      });
+function spawnPeopleOnFloors(floorGroup,sceneSize){
+  const floors=[],stack=[floorGroup];
+  while(stack.length){const n=stack.pop();if(n.isMesh&&n.geometry){n.updateWorldMatrix(true,false);if(!n.geometry.boundingBox)n.geometry.computeBoundingBox();const bb=n.geometry.boundingBox.clone().applyMatrix4(n.matrixWorld);if(!bb.isEmpty())floors.push(bb);}for(let i=0;i<n.children.length;i++)stack.push(n.children[i]);}
+  if(!floors.length)return;
+  const ph=sceneSize*.007,pw=sceneSize*.003;
+  const pGeo=new THREE.BoxGeometry(pw,ph,pw), eGeo=new THREE.EdgesGeometry(pGeo);
+  floors.forEach(bb=>{
+    const fy=bb.max.y,cx=(bb.min.x+bb.max.x)/2,cz=(bb.min.z+bb.max.z)/2,rx=(bb.max.x-bb.min.x)*.8,rz=(bb.max.z-bb.min.z)*.8;
+    for(let i=0;i<PEOPLE_PER_FLOOR;i++){
+      const mesh=new THREE.Mesh(pGeo,personMat); mesh.add(new THREE.LineSegments(eGeo,personEdgeMat));
+      const px=cx+(Math.random()-.5)*rx,pz=cz+(Math.random()-.5)*rz,py=fy+ph*.5;
+      mesh.position.set(px,py,pz); peopleGroup.add(mesh);
+      people.push({mesh,baseY:py,target:new THREE.Vector3(px,py,pz),speed:sceneSize*.0003+Math.random()*sceneSize*.0003,bobFreq:2.5+Math.random()*2,bobAmp:sceneSize*.002,phase:Math.random()*Math.PI*2,minX:bb.min.x+rx*.1,maxX:bb.max.x-rx*.1,minZ:bb.min.z+rz*.1,maxZ:bb.max.z-rz*.1});
     }
   });
 }
 
-function updatePeople() {
-  const now = performance.now() * 0.001;
-  for (const p of people) {
-    const dx = p.target.x - p.mesh.position.x;
-    const dz = p.target.z - p.mesh.position.z;
-    const dist = Math.sqrt(dx*dx + dz*dz);
-
-    if (dist < p.speed * 2) {
-      // New random target clamped within this floor's footprint
-      p.target.set(
-        p.minX + Math.random() * (p.maxX - p.minX),
-        p.baseY,
-        p.minZ + Math.random() * (p.maxZ - p.minZ)
-      );
-    } else {
-      p.mesh.position.x += (dx / dist) * p.speed;
-      p.mesh.position.z += (dz / dist) * p.speed;
-    }
-
-    // Bob while moving
-    const moving = dist > p.speed;
-    p.mesh.position.y = p.baseY + (moving ? Math.abs(Math.sin(now * p.bobFreq + p.phase)) * p.bobAmp : 0);
-
-    // Face direction of travel
-    if (dist > p.speed * 0.5) p.mesh.rotation.y = Math.atan2(dx, dz);
+function updatePeople(){
+  const now=performance.now()*.001;
+  for(const p of people){
+    const dx=p.target.x-p.mesh.position.x,dz=p.target.z-p.mesh.position.z,dist=Math.sqrt(dx*dx+dz*dz);
+    if(dist<p.speed*2)p.target.set(p.minX+Math.random()*(p.maxX-p.minX),p.baseY,p.minZ+Math.random()*(p.maxZ-p.minZ));
+    else{p.mesh.position.x+=(dx/dist)*p.speed;p.mesh.position.z+=(dz/dist)*p.speed;}
+    p.mesh.position.y=p.baseY+(dist>p.speed?Math.abs(Math.sin(now*p.bobFreq+p.phase))*p.bobAmp:0);
+    if(dist>p.speed*.5)p.mesh.rotation.y=Math.atan2(dx,dz);
   }
 }
 
-// People group — registered as layer 5 so the toggle can show/hide it
-const peopleGroup = new THREE.Group();
-scene.add(peopleGroup);
-layerGroups[5] = peopleGroup;
+const peopleGroup=new THREE.Group(); peopleGroup.visible=false; scene.add(peopleGroup);
+layerGroups[5]=peopleGroup; layerVisible[5]=false;
+let peopleSpawned=false;
+function maybeSpawnPeople(){if(peopleSpawned||!allLoaded)return;peopleSpawned=true;if(layerGroups[4])spawnPeopleOnFloors(layerGroups[4],storedDist);}
 
-// Called from the loader when floors GLB finishes
-let peopleSpawned = false;
-function maybeSpawnPeople() {
-  if (peopleSpawned || !allLoaded) return;
-  peopleSpawned = true;
-  const floorsGroup = layerGroups[4];
-  if (floorsGroup) spawnPeopleOnFloors(floorsGroup, storedDist);
+// ════════════════════════════════════════════════════════════════════════════════
+// ANNOTATION SYSTEM — SVG overlay, billboards to camera, shows on isolate
+// ════════════════════════════════════════════════════════════════════════════════
+const DETAIL_LAYER_NAMES = ['SKIN', 'WALLS', 'STEEL', 'MECHANICAL', 'TESSELATION', 'PANNELS'];
+
+// Offset directions for each label so they don't pile up — screen-space nudge
+// Applied as a normalised direction multiplied by a fixed pixel length
+const ANNO_OFFSETS = [
+  { dx:  0.6, dy: -1.0 }, // skin      — upper right
+  { dx: -0.7, dy: -0.9 }, // walls     — upper left
+  { dx:  1.0, dy: -0.2 }, // steel     — right
+  { dx: -1.0, dy:  0.1 }, // mechanical— left
+  { dx:  0.5, dy:  0.9 }, // tesselation— lower right
+  { dx: -0.5, dy:  0.8 }, // pannels   — lower left
+];
+const ANNO_LEADER = 70; // px — length of leader line
+
+const annoSVG = document.getElementById('annotation-svg');
+
+// Per-annotation data — computed once centroids are known
+const annotations = []; // { worldPos: Vector3, name, offset }
+
+function buildAnnotations() {
+  annotations.length = 0;
+  for (let i = 0; i < detailGroups.length; i++) {
+    const grp = detailGroups[i];
+    if (!grp) continue;
+
+    // World-space centroid of this detail group
+    const bb = safeBB(grp);
+    const center = new THREE.Vector3();
+    if (!bb.isEmpty()) bb.getCenter(center);
+    else center.setFromMatrixPosition(grp.matrixWorld);
+
+    annotations.push({
+      worldPos: center,
+      name: DETAIL_LAYER_NAMES[i] || `LAYER ${i}`,
+      offset: ANNO_OFFSETS[i] || { dx: 1, dy: -1 },
+      groupIdx: i,
+    });
+  }
 }
 
-// ── HUD & render loop ─────────────────────────────────────────────────────────
-const camPosEl   = document.getElementById('cam-pos');
-const camAngleEl = document.getElementById('cam-angle');
-const fpsEl      = document.getElementById('fps-counter');
-let lastT = performance.now(), frames = 0;
+// Project a world Vector3 to screen px coords. Returns null if behind camera.
+const _ndc = new THREE.Vector3();
+function toScreen(worldPos) {
+  _ndc.copy(worldPos).project(camera);
+  if (_ndc.z > 1) return null; // behind camera
+  return {
+    x: ( _ndc.x * 0.5 + 0.5) * window.innerWidth,
+    y: (-_ndc.y * 0.5 + 0.5) * window.innerHeight,
+  };
+}
 
-function animate() {
+// SVG namespace helper
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+// Arrowhead — small filled triangle pointing toward the anchor
+function makeArrowhead(ax, ay, dx, dy) {
+  // dx,dy = normalised direction FROM label TO anchor
+  const len = 6, wing = 3;
+  const px = ax + dx*len, py = ay + dy*len; // tip
+  const nx = -dy, ny = dx; // perpendicular
+  const b1x = ax + nx*wing, b1y = ay + ny*wing;
+  const b2x = ax - nx*wing, b2y = ay - ny*wing;
+  return svgEl('polygon', {
+    points: `${px},${py} ${b1x},${b1y} ${b2x},${b2y}`,
+    class: 'anno-dot',
+  });
+}
+
+function updateAnnotations() {
+  // Clear SVG
+  while (annoSVG.firstChild) annoSVG.removeChild(annoSVG.firstChild);
+  if (!isolateActive || annotations.length === 0) return;
+
+  for (const anno of annotations) {
+    // Skip if layer is toggled off
+    if (!detailVisible[anno.groupIdx]) continue;
+
+    // Use current mesh position if exploding (centroid shifts)
+    // Re-project the stored world position — for exploded state,
+    // compute live centroid from group BB
+    const grp = detailGroups[anno.groupIdx];
+    let worldPos = anno.worldPos;
+    if (detailExplodeSystem && detailExplodeSystem.currentT > 0.001) {
+      const bb = safeBB(grp);
+      if (!bb.isEmpty()) { worldPos = new THREE.Vector3(); bb.getCenter(worldPos); }
+    }
+
+    const anchor = toScreen(worldPos);
+    if (!anchor) continue;
+
+    const { dx, dy } = anno.offset;
+    const mag = Math.sqrt(dx*dx+dy*dy);
+    const ndx = dx/mag, ndy = dy/mag;
+
+    // Label position — end of leader
+    const lx = anchor.x + ndx * ANNO_LEADER;
+    const ly = anchor.y + ndy * ANNO_LEADER;
+
+    // Dashed leader line: anchor → label base
+    const line = svgEl('line', {
+      x1: anchor.x, y1: anchor.y,
+      x2: lx, y2: ly,
+      class: 'anno-line',
+    });
+    annoSVG.appendChild(line);
+
+    // Short horizontal tick at label end
+    const tickLen = 18;
+    const tickDir = ndx >= 0 ? 1 : -1;
+    const tick = svgEl('line', {
+      x1: lx, y1: ly,
+      x2: lx + tickDir * tickLen, y2: ly,
+      class: 'anno-tick',
+    });
+    annoSVG.appendChild(tick);
+
+    // Arrowhead at anchor end, pointing toward anchor
+    const arrow = makeArrowhead(anchor.x, anchor.y, -ndx, -ndy);
+    annoSVG.appendChild(arrow);
+
+    // Label text — sits at end of tick
+    const textX = lx + tickDir * (tickLen + 5);
+    const textAnchor = tickDir > 0 ? 'start' : 'end';
+    const text = svgEl('text', {
+      x: textX, y: ly,
+      class: 'anno-label',
+      'text-anchor': textAnchor,
+      'dominant-baseline': 'middle',
+    });
+    text.textContent = anno.name;
+    annoSVG.appendChild(text);
+  }
+}
+
+// Show/hide SVG
+function showAnnotations() { annoSVG.classList.add('active'); }
+function hideAnnotations() { annoSVG.classList.remove('active'); while(annoSVG.firstChild)annoSVG.removeChild(annoSVG.firstChild); }
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+const camPosEl=document.getElementById('cam-pos'),camAngleEl=document.getElementById('cam-angle'),fpsEl=document.getElementById('fps-counter');
+let lastT=performance.now(),frames=0;
+
+function animate(){
   requestAnimationFrame(animate);
   controls.update();
-
   updatePeople();
-
-  // Drift stars slowly
-  const pos = starGeo.attributes.position.array;
-  for (let i = 0; i < starCount; i++) {
-    pos[i*3+0] += starVelocities[i*3+0];
-    pos[i*3+1] += starVelocities[i*3+1];
-    pos[i*3+2] += starVelocities[i*3+2];
-    // Wrap: if a star drifts too far, nudge it back toward the spread shell
-    const dx = pos[i*3+0], dy = pos[i*3+1], dz = pos[i*3+2];
-    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
-    if (dist > starSpread) {
-      pos[i*3+0] *= 0.995;
-      pos[i*3+1] *= 0.995;
-      pos[i*3+2] *= 0.995;
-    }
-  }
-  starGeo.attributes.position.needsUpdate = true;
-
-  renderer.render(scene, camera);
-
+  for(const sys of explodeSystems){if(sys)sys.tick();}
+  if(detailExplodeSystem)detailExplodeSystem.tick();
+  tickScan();
+  const pos=starGeo.attributes.position.array;
+  for(let i=0;i<starCount;i++){pos[i*3]+=starVelocities[i*3];pos[i*3+1]+=starVelocities[i*3+1];pos[i*3+2]+=starVelocities[i*3+2];const dx=pos[i*3],dy=pos[i*3+1],dz=pos[i*3+2],d=Math.sqrt(dx*dx+dy*dy+dz*dz);if(d>starSpread){pos[i*3]*=.995;pos[i*3+1]*=.995;pos[i*3+2]*=.995;}}
+  starGeo.attributes.position.needsUpdate=true;
+  renderer.render(scene,camera);
+  if(isolateActive) updateAnnotations();
   frames++;
-  const now = performance.now();
-  if (now - lastT > 800) {
-    const fps = Math.round(frames / ((now - lastT) / 1000));
-    frames = 0; lastT = now;
-    const p = camera.position;
-    const d = new THREE.Vector3(); camera.getWorldDirection(d);
-    camPosEl.textContent   = `X${p.x.toFixed(0)} Y${p.y.toFixed(0)} Z${p.z.toFixed(0)}`;
-    camAngleEl.textContent = `AZ${(Math.atan2(d.x,d.z)*180/Math.PI).toFixed(0)}° EL${(Math.asin(d.y)*180/Math.PI).toFixed(0)}°`;
-    fpsEl.textContent      = `${fps} FPS`;
+  const now=performance.now();
+  if(now-lastT>800){
+    const fps=Math.round(frames/((now-lastT)/1000)); frames=0; lastT=now;
+    const p=camera.position,d=new THREE.Vector3(); camera.getWorldDirection(d);
+    camPosEl.textContent=`X${p.x.toFixed(0)} Y${p.y.toFixed(0)} Z${p.z.toFixed(0)}`;
+    camAngleEl.textContent=`AZ${(Math.atan2(d.x,d.z)*180/Math.PI).toFixed(0)}° EL${(Math.asin(d.y)*180/Math.PI).toFixed(0)}°`;
+    fpsEl.textContent=`${fps} FPS`;
   }
 }
 animate();
 
-// ── Resize ────────────────────────────────────────────────────────────────────
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
+window.addEventListener('resize',()=>{camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight);});
 </script>
 </body>
 </html>
